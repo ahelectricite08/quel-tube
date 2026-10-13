@@ -12,7 +12,6 @@ import {
   summaryText,
   cadresFor,
   getTest,
-  formatFrenchDate,
   norm,
 } from "./logic.js";
 
@@ -27,10 +26,9 @@ const els = {
   unknown: document.querySelector("#unknown"),
   dock: document.querySelector("#dock"),
   paste: document.querySelector("#paste"),
-  tabs: document.querySelector("#visit-tabs"),
-  date: document.querySelector("#visit-date"),
   name: document.querySelector("#patient-name"),
-  when: document.querySelector("#when-read"),
+  ordonnance: document.querySelector("#ordonnance-label"),
+  saveBox: document.querySelector("#save-box"),
   status: document.querySelector("#ocr-status"),
   history: document.querySelector("#history"),
   historySearch: document.querySelector("#history-search"),
@@ -48,30 +46,30 @@ document.querySelector("#pick-photo").addEventListener("click", () => {
 document.querySelector("#camera-input").addEventListener("change", onFile);
 document.querySelector("#gallery-input").addEventListener("change", onFile);
 document.querySelector("#read-paste").addEventListener("click", () => {
-  applyParsed(parsePrescription(els.paste.value), { mergeByName: true });
+  applyParsed(parsePrescription(els.paste.value));
 });
 document.querySelector("#new-patient").addEventListener("click", () => {
   state = blankState();
   els.paste.value = "";
   els.search.value = "";
   render();
-  els.name.focus();
 });
-
-els.date.addEventListener("change", () => {
-  const visit = activeVisit();
-  visit.date = els.date.value;
-  visit.whenText = "";
+document.querySelector("#save-history").addEventListener("click", () => {
+  state.name = els.name.value.trim();
+  state.ordonnance = els.ordonnance.value.trim();
+  if (state.name.length < 2 || state.ordonnance.length < 2) {
+    flash("Écris le nom et l'ordonnance");
+    return;
+  }
   savePatient();
+  flash("Enregistré dans l'historique");
   render();
 });
 els.name.addEventListener("input", () => {
   state.name = els.name.value;
 });
-els.name.addEventListener("change", () => {
-  state.name = els.name.value;
-  savePatient();
-  render();
+els.ordonnance.addEventListener("input", () => {
+  state.ordonnance = els.ordonnance.value;
 });
 els.search.addEventListener("input", () => renderSuggestions());
 els.search.addEventListener("keydown", (event) => {
@@ -90,15 +88,15 @@ function blankState() {
   return {
     patientId: null,
     name: "",
-    visits: [{ date: "", whenText: "", ids: [] }],
+    ordonnance: "",
+    parts: [],
     active: 0,
-    unknowns: [],
     progress: "",
   };
 }
 
-function activeVisit() {
-  return state.visits[state.active] || state.visits[0];
+function activePart() {
+  return state.parts[state.active] || state.parts[0] || { title: "", detail: "", ids: [] };
 }
 
 function loadHistory() {
@@ -107,57 +105,47 @@ function loadHistory() {
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((item) => item && item.id && item.name)
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        updatedAt: item.updatedAt || 0,
-        visits: (item.visits || [])
-          .map((visit) => ({
-            date: visit.date || "",
-            whenText: visit.whenText || "",
-            ids: (visit.ids || []).filter((id) => getTest(id)),
-          }))
-          .filter((visit) => visit.date || visit.ids.length),
-      }))
-      .filter((item) => item.visits.length || item.name);
+      .map((item) => {
+        const source = item.parts || item.visits || [];
+        return {
+          id: item.id,
+          name: item.name,
+          ordonnance: item.ordonnance || "",
+          updatedAt: item.updatedAt || 0,
+          parts: source
+            .map((part) => ({
+              title: part.title || part.whenText || "Un seul prélèvement",
+              detail: part.detail || "",
+              ids: (part.ids || []).filter((id) => getTest(id)),
+            }))
+            .filter((part) => part.ids.length),
+        };
+      })
+      .filter((item) => item.parts.length);
   } catch {
     return [];
   }
 }
 
-function savePatient(options = {}) {
+function savePatient() {
   const name = state.name.trim();
-  if (name.length < 2) return;
-  const useful = state.visits.some((visit) => visit.date || visit.ids.length);
-  if (!useful) return;
+  const ordonnance = state.ordonnance.trim();
+  if (name.length < 2 || ordonnance.length < 2) return;
+  if (!state.parts.some((part) => part.ids.length)) return;
   const history = loadHistory();
   let record = history.find((item) => item.id === state.patientId);
-  if (!record && options.mergeByName) {
-    record = history.find((item) => norm(item.name) === norm(name));
-    if (record) state.patientId = record.id;
-  }
   if (!record) {
     state.patientId = state.patientId || crypto.randomUUID();
-    record = { id: state.patientId, name, visits: [], updatedAt: Date.now() };
+    record = { id: state.patientId, name, ordonnance, parts: [], updatedAt: Date.now() };
     history.unshift(record);
   }
-  if (options.mergeByName && record.visits.length) {
-    const merged = record.visits.map((visit) => ({ ...visit, ids: [...visit.ids] }));
-    state.visits.forEach((visit) => {
-      const index = visit.date ? merged.findIndex((item) => item.date === visit.date) : -1;
-      const next = { date: visit.date, whenText: visit.whenText, ids: [...visit.ids] };
-      if (index >= 0) merged[index] = next;
-      else merged.push(next);
-    });
-    state.visits = merged.sort(byDate);
-    state.active = Math.min(state.active, state.visits.length - 1);
-  }
   record.name = name;
+  record.ordonnance = ordonnance;
   record.updatedAt = Date.now();
-  record.visits = state.visits.map((visit) => ({
-    date: visit.date || "",
-    whenText: visit.whenText || "",
-    ids: [...visit.ids],
+  record.parts = state.parts.map((part) => ({
+    title: part.title,
+    detail: part.detail || "",
+    ids: [...part.ids],
   }));
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
@@ -166,28 +154,24 @@ function savePatient(options = {}) {
   }
 }
 
-function byDate(a, b) {
-  if (a.date && b.date) return a.date.localeCompare(b.date);
-  if (a.date) return -1;
-  if (b.date) return 1;
-  return 0;
-}
-
-function applyParsed(parsed, options = {}) {
+function applyParsed(parsed) {
   state.patientId = crypto.randomUUID();
-  state.name = parsed.name || "";
-  state.visits = (parsed.visits.length ? parsed.visits : [{ date: "", whenText: "", ids: [] }]).map((visit) => ({
-    date: visit.date || "",
-    whenText: visit.whenText || "",
-    ids: [...(visit.ids || [])],
+  state.name = "";
+  state.ordonnance = "";
+  state.parts = (parsed.parts || []).map((part) => ({
+    title: part.title,
+    detail: part.detail || "",
+    ids: [...(part.ids || [])],
   }));
   state.active = 0;
-  state.unknowns = [...new Set(parsed.visits.flatMap((visit) => visit.unknown || []))];
-  state.progress = state.name ? "Ordonnance lue." : "Nom non lu. Écris-le sous la date.";
-  savePatient({ mergeByName: options.mergeByName });
+  const several = state.parts.length > 1;
+  state.progress = several
+    ? `${state.parts.length} moments : ${state.parts.map((part) => part.title).join(", ")}.`
+    : state.parts[0] && state.parts[0].title !== "Un seul prélèvement"
+      ? state.parts[0].title
+      : "Un seul prélèvement.";
   render();
-  if (!state.name) els.name.focus();
-  else document.querySelector("#result").scrollIntoView({ block: "start" });
+  document.querySelector("#result").scrollIntoView({ block: "start" });
 }
 
 async function onFile(event) {
@@ -206,7 +190,7 @@ async function onFile(event) {
       renderStatus();
       return;
     }
-    applyParsed(parsePrescription(text), { mergeByName: true });
+    applyParsed(parsePrescription(text));
   } catch {
     workerPromise = null;
     state.progress = "La photo n'a pas pu être lue. Recharge la page avec internet, puis réessaie. Tu peux aussi coller le texte.";
@@ -261,32 +245,34 @@ async function prepareImage(file) {
 }
 
 function toggleTest(id, forceAdd = false) {
-  const visit = activeVisit();
-  const has = visit.ids.includes(id);
+  const part = activePart();
+  if (!state.parts.length) {
+    state.parts = [{ title: "Un seul prélèvement", detail: "", ids: [] }];
+    state.active = 0;
+  }
+  const target = state.parts[state.active];
+  const has = target.ids.includes(id);
   if (forceAdd && has) {
     els.search.value = "";
     renderSuggestions();
     return;
   }
-  visit.ids = has ? visit.ids.filter((item) => item !== id) : [...visit.ids, id];
+  target.ids = has ? target.ids.filter((item) => item !== id) : [...target.ids, id];
   if (forceAdd) els.search.value = "";
-  savePatient();
   render();
 }
 
-function openPatient(id, visitIndex) {
+function openPatient(id) {
   const record = loadHistory().find((item) => item.id === id);
   if (!record) return;
   state.patientId = record.id;
   state.name = record.name;
-  state.visits = record.visits.length
-    ? record.visits.map((visit) => ({ ...visit, ids: [...visit.ids] }))
-    : [{ date: "", whenText: "", ids: [] }];
-  state.active = Math.min(visitIndex, state.visits.length - 1);
-  state.unknowns = [];
+  state.ordonnance = record.ordonnance || "";
+  state.parts = record.parts.map((part) => ({ ...part, ids: [...part.ids] }));
+  state.active = 0;
   state.progress = "";
   render();
-  els.date.scrollIntoView({ block: "start" });
+  document.querySelector("#result").scrollIntoView({ block: "start" });
 }
 
 function deletePatient(id) {
@@ -298,12 +284,9 @@ function deletePatient(id) {
 
 function render() {
   syncIdentity();
-  renderTabs();
-  renderWhen();
   renderResult();
   renderChips();
   renderSuggestions();
-  renderUnknown();
   renderHistory();
   syncChecks();
   renderDock();
@@ -311,82 +294,34 @@ function render() {
 }
 
 function syncIdentity() {
-  const visit = activeVisit();
-  if (document.activeElement !== els.date) els.date.value = visit.date || "";
   if (document.activeElement !== els.name) els.name.value = state.name;
-}
-
-function renderWhen() {
-  const visit = activeVisit();
-  els.when.textContent = visit.whenText ? `Date lue : ${visit.whenText}` : "";
+  if (document.activeElement !== els.ordonnance) els.ordonnance.value = state.ordonnance;
+  const hasTubes = state.parts.some((part) => part.ids.length);
+  els.saveBox.hidden = !hasTubes;
 }
 
 function renderStatus() {
   els.status.textContent = state.progress || "";
 }
 
-function renderTabs() {
-  if (state.visits.length < 2) {
-    els.tabs.hidden = true;
-    els.tabs.innerHTML = "";
-    return;
-  }
-  els.tabs.hidden = false;
-  els.tabs.innerHTML = state.visits
-    .map((visit, index) => {
-      const on = index === state.active ? " on" : "";
-      const label = formatFrenchDate(visit.date) || `Date ${index + 1}`;
-      return `<button type="button" class="ghost${on}" data-tab="${index}">${esc(label)} · ${plan(visit.ids).length}</button>`;
-    })
-    .join("");
-  els.tabs.querySelectorAll("[data-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.active = Number(button.dataset.tab);
-      savePatient();
-      render();
-    });
-  });
-}
-
 function renderResult() {
-  const visit = activeVisit();
-  const tubes = plan(visit.ids);
-  if (!tubes.length) {
+  const visible = state.parts.filter((part) => part.ids.length);
+  if (!visible.length) {
     els.result.innerHTML = `
       <div class="empty">
         <p class="kicker">Tubes</p>
-        <h2>Ils s'affichent sous la date et le nom.</h2>
-        <p class="moment-note">Un cadre du guide = un tube. Plusieurs analyses du même cadre restent dans le même tube.</p>
+        <h2>Ils s'affichent ici, après la photo.</h2>
+        <p class="moment-note">S'il y a un avant et un après, tu verras les deux. Sinon, un seul prélèvement.</p>
       </div>`;
     return;
   }
-  const counts = colorCounts(tubes);
-  const repeated = counts.filter((item) => item.n > 1);
   els.result.innerHTML = `
-    <article class="moment">
-      <p class="kicker">Tubes pour ${esc(formatFrenchDate(visit.date) || "cette date")}</p>
-      ${state.name ? `<p class="moment-note">${esc(state.name)}</p>` : ""}
-      <div class="count-row">
-        <p class="count">${tubes.length}<span>${tubes.length > 1 ? "tubes" : "tube"}</span></p>
-        <div class="counts">
-          ${counts
-            .map(
-              (item) =>
-                `<span class="count-pill" style="background:${COLORS[item.color].body};color:${COLORS[item.color].ink}">${esc(countLabel(item.n, item.label))}</span>`
-            )
-            .join("")}
-        </div>
-      </div>
-      <p class="order-line">Ordre du guide : ${tubes.map((tube) => esc(COLORS[tube.cadre.color].label)).join(" → ")}</p>
-      ${
-        repeated.length
-          ? `<p class="split-warning">${repeated
-              .map((item) => `${item.n} tubes ${esc(pluralColor(item.label))} séparés. Un cadre par tube. Ne pas mélanger le sang.`)
-              .join(" ")}</p>`
-          : ""
-      }
-      <div class="tubes">${tubes.map((tube, step) => renderTube(tube, step)).join("")}</div>
-    </article>
+    ${visible
+      .map((part) => {
+        const index = state.parts.indexOf(part);
+        return renderPart(part, index);
+      })
+      .join("")}
     <div class="warnings">
       <strong>À retenir</strong>
       <p>Ne jamais transférer le sang d'un tube à l'autre.</p>
@@ -400,12 +335,55 @@ function renderResult() {
     </div>`;
   document.querySelector("#copy").addEventListener("click", copySummary);
   document.querySelector("#print").addEventListener("click", () => window.print());
+  els.result.querySelectorAll("[data-select-part]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.active = Number(button.dataset.selectPart);
+      render();
+    });
+  });
   els.result.querySelectorAll("[data-drop]").forEach((button) => {
-    button.addEventListener("click", () => toggleTest(button.dataset.drop));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const [partIndex, id] = button.dataset.drop.split("|");
+      state.active = Number(partIndex);
+      toggleTest(id);
+    });
   });
 }
 
-function renderTube(tube, step) {
+function renderPart(part, index) {
+  const tubes = plan(part.ids);
+  const counts = colorCounts(tubes);
+  const repeated = counts.filter((item) => item.n > 1);
+  const on = index === state.active && state.parts.length > 1 ? " part-on" : "";
+  return `
+    <article class="moment${on}">
+      <button type="button" class="part-title" data-select-part="${index}">${esc(part.title)}</button>
+      ${part.detail ? `<p class="moment-note">${esc(part.detail)}</p>` : ""}
+      <div class="count-row">
+        <p class="count">${tubes.length}<span>${tubes.length > 1 ? "tubes" : "tube"}</span></p>
+        <div class="counts">
+          ${counts
+            .map(
+              (item) =>
+                `<span class="count-pill" style="background:${COLORS[item.color].body};color:${COLORS[item.color].ink}">${esc(countLabel(item.n, item.label))}</span>`
+            )
+            .join("")}
+        </div>
+      </div>
+      <p class="order-line">Ordre : ${tubes.map((tube) => esc(COLORS[tube.cadre.color].label)).join(" → ")}</p>
+      ${
+        repeated.length
+          ? `<p class="split-warning">${repeated
+              .map((item) => `${item.n} tubes ${esc(pluralColor(item.label))} séparés. Un cadre par tube. Ne pas mélanger le sang.`)
+              .join(" ")}</p>`
+          : ""
+      }
+      <div class="tubes">${tubes.map((tube, step) => renderTube(tube, step, index)).join("")}</div>
+    </article>`;
+}
+
+function renderTube(tube, step, partIndex) {
   const color = COLORS[tube.cadre.color];
   const urgents = tube.tests.filter((test) => test.urgent);
   const fragiles = tube.tests.filter((test) => test.fragile);
@@ -423,7 +401,7 @@ function renderTube(tube, step) {
           ${tube.tests
             .map(
               (test) =>
-                `<li>${esc(test.label)}<button type="button" data-drop="${esc(test.id)}" aria-label="Retirer ${esc(test.label)}">×</button></li>`
+                `<li>${esc(test.label)}<button type="button" data-drop="${partIndex}|${esc(test.id)}" aria-label="Retirer ${esc(test.label)}">×</button></li>`
             )
             .join("")}
         </ul>
@@ -437,8 +415,12 @@ function renderTube(tube, step) {
 }
 
 function renderChips() {
-  const visit = activeVisit();
-  els.chips.innerHTML = visit.ids
+  const part = activePart();
+  const label = document.querySelector("label[for=search]");
+  if (label) {
+    label.textContent = state.parts.length > 1 ? `Ajouter une analyse dans ${part.title}` : "Ajouter une analyse";
+  }
+  els.chips.innerHTML = (part.ids || [])
     .map((id) => {
       const test = getTest(id);
       const cadre = cadresFor(id)[0];
@@ -457,7 +439,7 @@ function renderSuggestions() {
     els.suggestions.innerHTML = "";
     return;
   }
-  const selected = new Set(activeVisit().ids);
+  const selected = new Set(activePart().ids || []);
   els.suggestions.innerHTML = rows
     .map(({ test }) => {
       const homes = cadresFor(test.id);
@@ -471,48 +453,38 @@ function renderSuggestions() {
   });
 }
 
-function renderUnknown() {
-  if (!state.unknowns.length) {
-    els.unknown.innerHTML = "";
-    return;
-  }
-  els.unknown.innerHTML = `<p>Pas trouvé sur le guide :</p><ul>${state.unknowns
-    .map((item) => `<li>${esc(item)}</li>`)
-    .join("")}</ul>`;
-}
-
 function renderHistory() {
   const query = norm(els.historySearch.value);
   const patients = loadHistory()
-    .filter((item) => !query || norm(item.name).includes(query))
+    .filter((item) => !query || norm(`${item.name} ${item.ordonnance}`).includes(query))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   if (!patients.length) {
-    els.history.innerHTML = `<p class="history-note">${query ? "Aucun patient avec ce nom." : "Aucun patient pour l'instant."}</p>`;
+    els.history.innerHTML = `<p class="history-note">${query ? "Rien avec ce nom." : "Rien dans l'historique."}</p>`;
     return;
   }
   els.history.innerHTML = patients
     .map((patient) => {
-      const visits = [...patient.visits].sort(byDate);
+      const lines = patient.parts
+        .map((part) => {
+          const count = plan(part.ids).length;
+          return `${esc(part.title)} · ${count} ${count > 1 ? "tubes" : "tube"}`;
+        })
+        .join("<br>");
+      const on = state.patientId === patient.id ? " on" : "";
       return `
         <article class="history-card">
           <div class="history-top">
             <strong>${esc(patient.name)}</strong>
             <button type="button" class="text-btn" data-delete="${esc(patient.id)}">Supprimer</button>
           </div>
-          ${visits
-            .map((visit, index) => {
-              const original = patient.visits.indexOf(visits[index]);
-              const date = formatFrenchDate(visit.date) || "Date à préciser";
-              const count = plan(visit.ids).length;
-              const on = state.patientId === patient.id && state.active === original ? " on" : "";
-              return `<button type="button" class="visit-btn${on}" data-open="${esc(patient.id)}" data-visit="${original}">${esc(date)} · ${count} ${count > 1 ? "tubes" : "tube"}</button>`;
-            })
-            .join("")}
+          <button type="button" class="visit-btn${on}" data-open="${esc(patient.id)}">
+            ${esc(patient.ordonnance || "Ordonnance")}<br>${lines}
+          </button>
         </article>`;
     })
     .join("");
   els.history.querySelectorAll("[data-open]").forEach((button) => {
-    button.addEventListener("click", () => openPatient(button.dataset.open, Number(button.dataset.visit)));
+    button.addEventListener("click", () => openPatient(button.dataset.open));
   });
   els.history.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => deletePatient(button.dataset.delete));
@@ -520,22 +492,24 @@ function renderHistory() {
 }
 
 function renderDock() {
-  const visit = activeVisit();
-  const tubes = plan(visit.ids);
-  if (!tubes.length && !state.name) {
+  const total = state.parts.reduce((sum, part) => sum + plan(part.ids).length, 0);
+  if (!total) {
     els.dock.hidden = true;
     return;
   }
   els.dock.hidden = false;
-  const brief = [state.name || "Sans nom", formatFrenchDate(visit.date) || "date à préciser"].join(" · ");
-  els.dock.innerHTML = `<div><strong>${tubes.length} ${tubes.length > 1 ? "tubes" : "tube"}</strong><span>${esc(brief)}</span></div><button type="button" class="linkish" id="dock-jump">Voir</button>`;
+  const brief = state.parts
+    .filter((part) => part.ids.length)
+    .map((part) => `${part.title} ${plan(part.ids).length}`)
+    .join(" · ");
+  els.dock.innerHTML = `<div><strong>${total} ${total > 1 ? "tubes" : "tube"}</strong><span>${esc(brief)}</span></div><button type="button" class="linkish" id="dock-jump">Voir</button>`;
   document.querySelector("#dock-jump").addEventListener("click", () => {
     document.querySelector("#result").scrollIntoView({ block: "start" });
   });
 }
 
 function syncChecks() {
-  const selected = new Set(activeVisit().ids);
+  const selected = new Set(activePart().ids || []);
   els.catalog.querySelectorAll("input[data-id]").forEach((input) => {
     input.checked = selected.has(input.dataset.id);
   });
@@ -573,22 +547,25 @@ function buildCatalog() {
   els.catalog.addEventListener("change", (event) => {
     const input = event.target.closest("input[data-id]");
     if (!input) return;
-    const visit = activeVisit();
-    const has = visit.ids.includes(input.dataset.id);
-    if (input.checked && !has) visit.ids = [...visit.ids, input.dataset.id];
-    if (!input.checked && has) visit.ids = visit.ids.filter((id) => id !== input.dataset.id);
-    savePatient();
+    if (!state.parts.length) {
+      state.parts = [{ title: "Un seul prélèvement", detail: "", ids: [] }];
+      state.active = 0;
+    }
+    const part = state.parts[state.active];
+    const has = part.ids.includes(input.dataset.id);
+    if (input.checked && !has) part.ids = [...part.ids, input.dataset.id];
+    if (!input.checked && has) part.ids = part.ids.filter((id) => id !== input.dataset.id);
     render();
   });
 }
 
 async function copySummary() {
-  const moments = state.visits
-    .filter((visit) => visit.ids.length)
-    .map((visit) => ({
-      title: state.name || "Patient",
-      note: formatFrenchDate(visit.date) || visit.whenText || "Date à préciser",
-      ids: visit.ids,
+  const moments = state.parts
+    .filter((part) => part.ids.length)
+    .map((part) => ({
+      title: part.title,
+      note: [state.name, state.ordonnance, part.detail].filter(Boolean).join(" · "),
+      ids: part.ids,
     }));
   const text = summaryText(moments);
   try {

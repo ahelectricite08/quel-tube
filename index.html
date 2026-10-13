@@ -25,7 +25,7 @@
   <header class="top">
     <p class="eyebrow">Laboratoire bio ard'aisne</p>
     <h1>Quel tube&nbsp;?</h1>
-    <p class="rule">Prends la photo. La date s'affiche, puis le nom, puis les tubes.</p>
+    <p class="rule">La photo donne les tubes. S'il y a un avant et un après l'hospitalisation, c'est séparé. Sinon, un seul prélèvement. Le nom, tu l'écris à la fin.</p>
     <ol class="legend">
       <li><i class="dot bleu"></i>Bleu</li>
       <li><i class="dot jaune"></i>Jaune</li>
@@ -50,16 +50,15 @@
       <input id="gallery-input" class="file-input" type="file" accept="image/*">
       <p id="ocr-status" class="ocr-status" aria-live="polite"></p>
 
-      <div id="visit-tabs" class="tabs" hidden></div>
-
-      <label class="search-label" for="visit-date">Date du prélèvement</label>
-      <input id="visit-date" class="big-field" type="date">
-      <p id="when-read" class="when-read"></p>
-
-      <label class="search-label" for="patient-name">Nom du client</label>
-      <input id="patient-name" class="big-field" type="text" autocomplete="name" placeholder="Nom lu sur l'ordonnance">
-
       <div id="result" aria-live="polite"></div>
+
+      <div id="save-box" class="save-box" hidden>
+        <label class="search-label" for="patient-name">Nom</label>
+        <input id="patient-name" class="big-field" type="text" autocomplete="name" placeholder="Tu l'écris, il n'est pas lu sur la photo">
+        <label class="search-label" for="ordonnance-label">Ordonnance</label>
+        <input id="ordonnance-label" class="big-field" type="text" placeholder="Hémato, chimio…">
+        <button type="button" class="solid" id="save-history">Enregistrer dans l'historique</button>
+      </div>
 
       <label class="search-label" for="search">Ajouter une analyse</label>
       <div class="search-wrap">
@@ -70,10 +69,10 @@
       <div id="unknown" class="unknown"></div>
 
       <div class="catalog-head">
-        <h2>Mes patients</h2>
+        <h2>Historique</h2>
         <button type="button" class="text-btn" id="new-patient">Nouveau</button>
       </div>
-      <input id="history-search" class="big-field" type="search" placeholder="Rechercher un nom">
+      <input id="history-search" class="big-field" type="search" placeholder="Rechercher un nom ou une ordonnance">
       <div id="history" class="history"></div>
       <p class="privacy">L'historique reste sur ce téléphone. La photo n'est pas envoyée.</p>
 

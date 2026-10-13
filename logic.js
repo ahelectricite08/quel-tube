@@ -587,51 +587,56 @@ export function unknownSegments(text) {
   return [...new Set(unknown)].slice(0, 12);
 }
 
+function momentKind(line) {
+  const n = norm(line);
+  const avant = /\bavant\b/.test(n);
+  const apres = /\bapres\b/.test(n);
+  const hosp = /hospital|hospi/.test(n);
+  const j1 = /\bj\s*1\b/.test(n);
+  if (!(avant || apres)) return null;
+  if (avant && hosp) return { title: "Avant l'hospitalisation" };
+  if (apres && hosp) return { title: "Après l'hospitalisation" };
+  if (apres && j1) return { title: "Après J1" };
+  if (avant && j1) return { title: "Avant J1" };
+  if (avant && /\bheure|\bh\b/.test(n)) return { title: "Avant l'hospitalisation" };
+  if (apres && /\bheure|\bh\b/.test(n)) return { title: "Après l'hospitalisation" };
+  return null;
+}
+
 export function parsePrescription(text) {
   const rawLines = String(text || "")
     .split(/\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const name = extractName(rawLines);
-  const dated = [];
+  const marks = [];
   rawLines.forEach((line, index) => {
-    const dates = findDatesInLine(line);
-    if (!dates.length) return;
-    dated.push({ index, iso: dates[0].iso, text: dates[0].text, role: dateRole(line) });
+    const kind = momentKind(line);
+    if (kind) marks.push({ index, title: kind.title, detail: line });
   });
 
-  let chosen = dated.filter((item) => item.role === "draw");
-  if (!chosen.length) chosen = dated.filter((item) => item.role === "other");
-  if (!chosen.length) chosen = dated.filter((item) => item.role === "letter");
-
-  const pack = (chunk) => ({
-    ids: matchIds(chunk),
-    unknown: unknownSegments(chunk).filter((item) => {
-      const n = norm(item);
-      if (!n || looksLikeName(item) || n === norm(name)) return false;
-      if (/\bne le\b|\bnee le\b|\bnaissance\b|\bddn\b/.test(n)) return false;
-      if (findDatesInLine(item).length && !matchIds(item).length) return false;
-      return true;
-    }),
-  });
-
-  if (!chosen.length) {
-    const whole = pack(rawLines.join("\n"));
-    return { name, visits: [{ date: "", whenText: "", ...whole }] };
+  if (!marks.length) {
+    return {
+      parts: [
+        {
+          title: "Un seul prélèvement",
+          detail: "",
+          ids: matchIds(rawLines.join("\n")),
+        },
+      ],
+    };
   }
 
-  const visits = chosen.map((mark, index) => {
-    const end = index + 1 < chosen.length ? chosen[index + 1].index : rawLines.length;
-    const chunkLines = rawLines.slice(mark.index, end);
-    if (index === 0) {
-      rawLines.slice(0, mark.index).forEach((line) => {
-        if (matchIds(line).length) chunkLines.unshift(line);
-      });
-    }
-    return { date: mark.iso, whenText: mark.text, ...pack(chunkLines.join("\n")) };
+  const parts = marks.map((mark, index) => {
+    const end = index + 1 < marks.length ? marks[index + 1].index : rawLines.length;
+    const chunk = rawLines.slice(mark.index, end).join("\n");
+    return { title: mark.title, detail: mark.detail, ids: matchIds(chunk) };
   });
-
-  return { name, visits };
+  const before = matchIds(rawLines.slice(0, marks[0].index).join("\n"));
+  if (before.length) {
+    parts[0].ids = [...new Set([...before, ...parts[0].ids])];
+  }
+  const filled = parts.filter((part) => part.ids.length);
+  return { parts: filled.length ? filled : parts };
 }
 
 function matchesQuery(blob, query) {
