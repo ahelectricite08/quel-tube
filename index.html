@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1d3c4a">
+  <meta name="description" content="Combien de tubes, et de quelle couleur, d'après le guide bio ard'aisne. Un cadre = un tube.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Quel tube">
+  <title>Quel tube ? · bio ard'aisne</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="rail" aria-hidden="true">
+    <span class="rail-bleu"></span>
+    <span class="rail-jaune"></span>
+    <span class="rail-rouge"></span>
+    <span class="rail-vert"></span>
+    <span class="rail-violet"></span>
+    <span class="rail-gris"></span>
+  </div>
+
+  <header class="top">
+    <p class="eyebrow">Laboratoire bio ard'aisne</p>
+    <h1>Quel tube&nbsp;?</h1>
+    <p class="rule">Un cadre = un tube. Même couleur, autre cadre = un tube de plus.</p>
+    <ol class="legend">
+      <li><i class="dot bleu"></i>Bleu</li>
+      <li><i class="dot jaune"></i>Jaune</li>
+      <li><i class="dot rouge"></i>Rouge</li>
+      <li><i class="dot vert"></i>Vert</li>
+      <li><i class="dot violet"></i>Violet</li>
+      <li><i class="dot gris"></i>Gris</li>
+    </ol>
+  </header>
+
+  <main class="layout">
+    <section class="col picker" aria-label="Analyses de l'ordonnance">
+      <button type="button" class="preset" id="preset-both">
+        <span class="preset-kicker">Ordonnance type</span>
+        <span class="preset-title">Hématologie, deux moments</span>
+        <span class="preset-sub">Avant l'hospitalisation, puis après J1. Pas le même jour.</span>
+      </button>
+      <div class="preset-row">
+        <button type="button" class="ghost" id="preset-before">Seulement l'avant</button>
+        <button type="button" class="ghost" id="preset-after">Seulement l'après J1</button>
+      </div>
+
+      <label class="search-label" for="search">Ajouter une analyse</label>
+      <div class="search-wrap">
+        <input id="search" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="NFS, troponine, créatinine…">
+      </div>
+      <div id="suggestions" class="suggestions" role="listbox" aria-label="Analyses trouvées"></div>
+      <div id="tabs" class="tabs" hidden></div>
+      <p id="active-label" class="active-label"></p>
+      <div id="chips" class="chips"></div>
+
+      <details class="fold">
+        <summary>Coller le texte de l'ordonnance</summary>
+        <textarea id="paste" rows="6" placeholder="NFS, plaquettes&#10;TP, TCA, fibrinogène&#10;Ionogramme, créatinine, CRP"></textarea>
+        <button type="button" class="solid" id="read-paste">Lire l'ordonnance</button>
+      </details>
+      <div id="unknown" class="unknown"></div>
+
+      <div class="catalog-head">
+        <h2>Tout le guide</h2>
+        <button type="button" class="text-btn" id="clear-all">Tout effacer</button>
+      </div>
+      <div id="catalog"></div>
+    </section>
+
+    <section class="col result-col" aria-label="Tubes à prélever">
+      <div id="result" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <div class="dock" id="dock" hidden></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "quel-tube",
+  "private": true,
+  "type": "module",
+  "description": "Aide au choix des tubes de prélèvement, guide bio ard'aisne"
+}

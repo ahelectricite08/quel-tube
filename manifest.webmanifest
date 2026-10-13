@@ -1,0 +1,19 @@
+{
+  "name": "Quel tube ?",
+  "short_name": "Quel tube",
+  "description": "Nombre et couleur des tubes selon le guide bio ard'aisne",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#efeae2",
+  "theme_color": "#1d3c4a",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
