@@ -200,19 +200,30 @@ async function onFile(event) {
     const image = await prepareImage(file);
     const worker = await getWorker();
     const result = await worker.recognize(image);
-    applyParsed(parsePrescription(result.data.text), { mergeByName: true });
+    const text = result && result.data ? result.data.text : "";
+    if (!String(text || "").trim()) {
+      state.progress = "La photo est trop floue ou trop sombre. Reprends-la bien à plat, ou colle le texte.";
+      renderStatus();
+      return;
+    }
+    applyParsed(parsePrescription(text), { mergeByName: true });
   } catch {
     workerPromise = null;
-    state.progress = "Photo non lue. Internet est utile la première fois. Tu peux coller le texte, ou remplir la date et le nom à la main.";
+    state.progress = "La photo n'a pas pu être lue. Recharge la page avec internet, puis réessaie. Tu peux aussi coller le texte.";
     renderStatus();
   }
 }
 
 function getWorker() {
   if (!workerPromise) {
-    workerPromise = import("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js").then(
-      ({ createWorker }) =>
-        createWorker("fra", 1, {
+    workerPromise = Promise.resolve()
+      .then(() => {
+        const api = window.Tesseract;
+        if (!api || typeof api.createWorker !== "function") {
+          throw new Error("lecteur absent");
+        }
+        return api.createWorker("fra", 1, {
+          workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
           logger(message) {
             if (!els.status) return;
             if (message.status === "recognizing text") {
@@ -221,34 +232,32 @@ function getWorker() {
               els.status.textContent = "Préparation de la lecture…";
             }
           },
-        })
-    );
+        });
+      })
+      .catch((error) => {
+        workerPromise = null;
+        throw error;
+      });
   }
   return workerPromise;
 }
 
 async function prepareImage(file) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1800 / bitmap.width);
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  const image = ctx.getImageData(0, 0, width, height);
-  const pixels = image.data;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const gray = pixels[i] * 0.3 + pixels[i + 1] * 0.59 + pixels[i + 2] * 0.11;
-    const contrasted = Math.min(255, Math.max(0, (gray - 128) * 1.35 + 128));
-    pixels[i] = contrasted;
-    pixels[i + 1] = contrasted;
-    pixels[i + 2] = contrasted;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1800 / bitmap.width);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    return canvas;
+  } catch {
+    return file;
   }
-  ctx.putImageData(image, 0, 0);
-  bitmap.close();
-  return canvas;
 }
 
 function toggleTest(id, forceAdd = false) {
