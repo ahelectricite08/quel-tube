@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1d3c4a">
-  <meta name="description" content="Combien de tubes, et de quelle couleur, d'après le guide bio ard'aisne. Un cadre = un tube.">
+  <meta name="description" content="Photo de l'ordonnance : la date, le nom du client, puis les tubes. Historique sur le téléphone.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Quel tube">
   <title>Quel tube ? · bio ard'aisne</title>
@@ -25,7 +25,7 @@
   <header class="top">
     <p class="eyebrow">Laboratoire bio ard'aisne</p>
     <h1>Quel tube&nbsp;?</h1>
-    <p class="rule">Un cadre = un tube. Même couleur, autre cadre = un tube de plus.</p>
+    <p class="rule">Prends la photo. La date s'affiche, puis le nom, puis les tubes.</p>
     <ol class="legend">
       <li><i class="dot bleu"></i>Bleu</li>
       <li><i class="dot jaune"></i>Jaune</li>
@@ -37,42 +37,56 @@
   </header>
 
   <main class="layout">
-    <section class="col picker" aria-label="Analyses de l'ordonnance">
-      <button type="button" class="preset" id="preset-both">
-        <span class="preset-kicker">Ordonnance type</span>
-        <span class="preset-title">Hématologie, deux moments</span>
-        <span class="preset-sub">Avant l'hospitalisation, puis après J1. Pas le même jour.</span>
-      </button>
-      <div class="preset-row">
-        <button type="button" class="ghost" id="preset-before">Seulement l'avant</button>
-        <button type="button" class="ghost" id="preset-after">Seulement l'après J1</button>
+    <section class="col picker" aria-label="Ordonnance">
+      <div class="photo-row">
+        <button type="button" class="preset" id="take-photo">
+          <span class="preset-kicker">Ordonnance</span>
+          <span class="preset-title">Prendre une photo</span>
+          <span class="preset-sub">Ou choisir une photo déjà dans le téléphone.</span>
+        </button>
+        <button type="button" class="ghost" id="pick-photo">Choisir une photo</button>
       </div>
+      <input id="camera-input" class="file-input" type="file" accept="image/*" capture="environment">
+      <input id="gallery-input" class="file-input" type="file" accept="image/*">
+      <p id="ocr-status" class="ocr-status" aria-live="polite"></p>
+
+      <div id="visit-tabs" class="tabs" hidden></div>
+
+      <label class="search-label" for="visit-date">Date du prélèvement</label>
+      <input id="visit-date" class="big-field" type="date">
+      <p id="when-read" class="when-read"></p>
+
+      <label class="search-label" for="patient-name">Nom du client</label>
+      <input id="patient-name" class="big-field" type="text" autocomplete="name" placeholder="Nom lu sur l'ordonnance">
+
+      <div id="result" aria-live="polite"></div>
 
       <label class="search-label" for="search">Ajouter une analyse</label>
       <div class="search-wrap">
         <input id="search" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="NFS, troponine, créatinine…">
       </div>
       <div id="suggestions" class="suggestions" role="listbox" aria-label="Analyses trouvées"></div>
-      <div id="tabs" class="tabs" hidden></div>
-      <p id="active-label" class="active-label"></p>
       <div id="chips" class="chips"></div>
-
-      <details class="fold">
-        <summary>Coller le texte de l'ordonnance</summary>
-        <textarea id="paste" rows="6" placeholder="NFS, plaquettes&#10;TP, TCA, fibrinogène&#10;Ionogramme, créatinine, CRP"></textarea>
-        <button type="button" class="solid" id="read-paste">Lire l'ordonnance</button>
-      </details>
       <div id="unknown" class="unknown"></div>
 
       <div class="catalog-head">
-        <h2>Tout le guide</h2>
-        <button type="button" class="text-btn" id="clear-all">Tout effacer</button>
+        <h2>Mes patients</h2>
+        <button type="button" class="text-btn" id="new-patient">Nouveau</button>
       </div>
-      <div id="catalog"></div>
-    </section>
+      <input id="history-search" class="big-field" type="search" placeholder="Rechercher un nom">
+      <div id="history" class="history"></div>
+      <p class="privacy">L'historique reste sur ce téléphone. La photo n'est pas envoyée.</p>
 
-    <section class="col result-col" aria-label="Tubes à prélever">
-      <div id="result" aria-live="polite"></div>
+      <details class="fold">
+        <summary>Coller le texte si la photo est illisible</summary>
+        <textarea id="paste" rows="6" placeholder="Nom&#10;15 10 2026&#10;NFS, plaquettes, créatinine"></textarea>
+        <button type="button" class="solid" id="read-paste">Lire le texte</button>
+      </details>
+
+      <details class="fold">
+        <summary>Tout le guide des tubes</summary>
+        <div id="catalog"></div>
+      </details>
     </section>
   </main>
 

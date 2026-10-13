@@ -429,7 +429,145 @@ export function matchIds(text) {
 }
 
 const IGNORE_SEGMENT =
-  /hospital|domicile|resultat|merci|prescription|sexe|poids|taille|age\b|mail|courriel|medecin|prescripteur|patient|batiment|adresse|naissance|securis|boite|attention|substitu|page|finsess|rpp|ipp|ordonnance|prelev|heure|avant|apres|chaque|j\s*1/;
+  /hospital|domicile|resultat|merci|prescription|sexe|poids|taille|age\b|mail|courriel|medecin|prescripteur|patient|batiment|adresse|naissance|securis|boite|attention|substitu|page|finsess|rpp|ipp|ordonnance|prelev|heure|chaque|faire|rendez/;
+
+const MONTHS = {
+  janvier: 1,
+  janv: 1,
+  fevrier: 2,
+  fev: 2,
+  mars: 3,
+  avril: 4,
+  avr: 4,
+  mai: 5,
+  juin: 6,
+  juillet: 7,
+  juil: 7,
+  aout: 8,
+  septembre: 9,
+  sept: 9,
+  octobre: 10,
+  oct: 10,
+  novembre: 11,
+  nov: 11,
+  decembre: 12,
+  dec: 12,
+};
+
+function isoDate(day, month, year) {
+  const d = Number(day);
+  const m = Number(month);
+  let y = Number(year);
+  if (!Number.isFinite(d) || !Number.isFinite(m) || !Number.isFinite(y)) return "";
+  if (y < 100) y += y >= 70 ? 1900 : 2000;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return "";
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return "";
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function stripBirth(line) {
+  return String(line)
+    .replace(/\bn[ée]e?\s+le\s+\d{1,2}\s*[\/.\-\s]\s*\d{1,2}\s*[\/.\-\s]\s*\d{2,4}/gi, " ")
+    .replace(/date de naissance[^\n]{0,24}/gi, " ");
+}
+
+export function formatFrenchDate(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function findDatesInLine(line) {
+  const source = norm(stripBirth(line));
+  if (/\bnaissance\b|\bddn\b|\bne\b|\bnee\b/.test(source)) return [];
+  const digitGroups = source.match(/\d+/g) || [];
+  const found = [];
+  const numeric = /\b(\d{1,2})(?:\s*[\/.\-]\s*|\s+)(\d{1,2})(?:\s*[\/.\-]\s*|\s+)(\d{4}|\d{2})\b/g;
+  let match = numeric.exec(source);
+  while (match) {
+    if (!(match[3].length === 2 && digitGroups.length > 3)) {
+      const iso = isoDate(match[1], match[2], match[3]);
+      const year = iso ? Number(iso.slice(0, 4)) : 0;
+      if (iso && year >= 2018) found.push({ iso, text: match[0].replace(/\s+/g, " ") });
+    }
+    match = numeric.exec(source);
+  }
+  const monthRe = new RegExp(`\\b(\\d{1,2})\\s+(${Object.keys(MONTHS).join("|")})\\s+(\\d{4})\\b`, "g");
+  match = monthRe.exec(source);
+  while (match) {
+    const iso = isoDate(match[1], MONTHS[match[2]], match[3]);
+    if (iso && Number(iso.slice(0, 4)) >= 2018) found.push({ iso, text: match[0] });
+    match = monthRe.exec(source);
+  }
+  return found;
+}
+
+function dateRole(line) {
+  const n = norm(line);
+  if (/\bfaire\b|\bprelev|\brdv\b|\brendez|\bmatin\b/.test(n)) return "draw";
+  const rest = n
+    .replace(/\d+/g, " ")
+    .replace(/\b(le|la|date|du|au|a|en)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (rest.length <= 4) return "draw";
+  if (/\b(reims|paris|lyon|chu|hopital|edite|fait)\b/.test(n)) return "letter";
+  return "other";
+}
+
+const NAME_STOP =
+  /rue|avenue|boulevard|chemin|impasse|place|cedex|docteur|prescripteur|laboratoire|service|batiment|ordonnance|clinique|centre|hospital|hemato|universit/;
+
+function cleanName(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^[:\-–]+/, "")
+    .trim();
+}
+
+function looksLikeName(value) {
+  const cleaned = cleanName(value);
+  if (!cleaned || cleaned.length > 48 || /\d/.test(cleaned)) return false;
+  const n = norm(cleaned);
+  if (!n || NAME_STOP.test(n)) return false;
+  const words = n.split(" ").filter((word) => word.length > 1);
+  if (words.length < 2 || words.length > 5) return false;
+  if (matchIds(cleaned).length) return false;
+  return true;
+}
+
+function extractName(lines) {
+  let skip = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (skip) {
+      skip -= 1;
+      continue;
+    }
+    const n = norm(lines[i]);
+    if (/\bprescripteur\b|\bdocteur\b|^dr\b/.test(n)) {
+      skip = 3;
+      continue;
+    }
+    const labeled = lines[i].match(/^(?:patient|nom du patient|nom et pr[eé]nom|nom)\s*[:\-]\s*(.+)$/i);
+    if (labeled && looksLikeName(labeled[1])) return cleanName(labeled[1]);
+    if (/identification du patient/.test(n)) {
+      for (let j = i + 1; j < Math.min(lines.length, i + 5); j += 1) {
+        if (looksLikeName(lines[j])) return cleanName(lines[j]);
+      }
+    }
+  }
+  for (const line of lines) {
+    const n = norm(line);
+    if (/\bprescripteur\b|\bdocteur\b|^dr\b/.test(n)) continue;
+    if (looksLikeName(line) && /[A-ZÀ-Ý]{2,}/.test(line)) return cleanName(line);
+  }
+  return "";
+}
 
 export function unknownSegments(text) {
   const parts = String(text || "")
@@ -449,35 +587,51 @@ export function unknownSegments(text) {
   return [...new Set(unknown)].slice(0, 12);
 }
 
-export function readOrdonnance(text) {
-  const lines = String(text || "").split(/\n/);
-  const splitAt = lines.findIndex((line) => /apr[eè]s/i.test(line) && /j\s*1/i.test(line));
-  if (splitAt > 0) {
-    const before = lines.slice(0, splitAt).join("\n");
-    const after = lines.slice(splitAt).join("\n");
-    return [
-      {
-        title: "Avant l'hospitalisation",
-        note: "24 à 48 h avant chaque hospitalisation",
-        ids: matchIds(before),
-        unknown: unknownSegments(before),
-      },
-      {
-        title: "Après J1",
-        note: "24 à 72 h après chaque J1",
-        ids: matchIds(after),
-        unknown: unknownSegments(after),
-      },
-    ];
+export function parsePrescription(text) {
+  const rawLines = String(text || "")
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const name = extractName(rawLines);
+  const dated = [];
+  rawLines.forEach((line, index) => {
+    const dates = findDatesInLine(line);
+    if (!dates.length) return;
+    dated.push({ index, iso: dates[0].iso, text: dates[0].text, role: dateRole(line) });
+  });
+
+  let chosen = dated.filter((item) => item.role === "draw");
+  if (!chosen.length) chosen = dated.filter((item) => item.role === "other");
+  if (!chosen.length) chosen = dated.filter((item) => item.role === "letter");
+
+  const pack = (chunk) => ({
+    ids: matchIds(chunk),
+    unknown: unknownSegments(chunk).filter((item) => {
+      const n = norm(item);
+      if (!n || looksLikeName(item) || n === norm(name)) return false;
+      if (/\bne le\b|\bnee le\b|\bnaissance\b|\bddn\b/.test(n)) return false;
+      if (findDatesInLine(item).length && !matchIds(item).length) return false;
+      return true;
+    }),
+  });
+
+  if (!chosen.length) {
+    const whole = pack(rawLines.join("\n"));
+    return { name, visits: [{ date: "", whenText: "", ...whole }] };
   }
-  return [
-    {
-      title: "Ce prélèvement",
-      note: "",
-      ids: matchIds(text),
-      unknown: unknownSegments(text),
-    },
-  ];
+
+  const visits = chosen.map((mark, index) => {
+    const end = index + 1 < chosen.length ? chosen[index + 1].index : rawLines.length;
+    const chunkLines = rawLines.slice(mark.index, end);
+    if (index === 0) {
+      rawLines.slice(0, mark.index).forEach((line) => {
+        if (matchIds(line).length) chunkLines.unshift(line);
+      });
+    }
+    return { date: mark.iso, whenText: mark.text, ...pack(chunkLines.join("\n")) };
+  });
+
+  return { name, visits };
 }
 
 function matchesQuery(blob, query) {
@@ -577,32 +731,3 @@ export function summaryText(moments) {
   );
   return blocks.join("\n\n");
 }
-
-export const PRESET_HEMATO = [
-  {
-    title: "Avant l'hospitalisation",
-    note: "24 à 48 h avant chaque hospitalisation",
-    ids: [
-      "nfs",
-      "plaquettes",
-      "tp",
-      "tca",
-      "fibrinogene",
-      "ionogramme",
-      "creatinine",
-      "calcium",
-      "asat",
-      "alat",
-      "ggt",
-      "pal",
-      "bilirubine",
-      "ldh",
-      "crp",
-    ],
-  },
-  {
-    title: "Après J1",
-    note: "24 à 72 h après chaque J1",
-    ids: ["nfs", "plaquettes", "troponine", "ntprobnp"],
-  },
-];
