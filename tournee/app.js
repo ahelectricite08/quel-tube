@@ -31,6 +31,8 @@ let syncNote = "Pas encore relié. Crée un code, colle-le sur l'autre appareil 
 let syncLink = null;
 let syncTimer = 0;
 let syncHeard = false;
+let printKind = "tour";
+let vitalDraft = { stopId: "", values: {} };
 
 function blank() {
   return {
@@ -47,8 +49,21 @@ function blank() {
     patients: [],
     tours: {},
     done: {},
+    notes: {},
   };
 }
+
+const VITALS = [
+  ["tension", "Tension", "12/8"],
+  ["pouls", "Pouls", "72"],
+  ["glycemie", "Glycémie", "1,10"],
+  ["sat", "Saturation", "98"],
+  ["douleur", "Douleur", "0-10"],
+  ["temp", "Température", "37"],
+  ["fr", "Respiration", "16"],
+  ["poids", "Poids", "kg"],
+];
+const WEEK = [[1, "lundi"], [2, "mardi"], [3, "mercredi"], [4, "jeudi"], [5, "vendredi"], [6, "samedi"], [0, "dimanche"]];
 
 function patientRecord(raw) {
   return {
@@ -64,6 +79,7 @@ function patientRecord(raw) {
     phone: raw.phone || "",
     note: raw.note || "",
     paused: Boolean(raw.paused),
+    days: Array.isArray(raw.days) ? raw.days.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     habits: Array.isArray(raw.habits) ? raw.habits.map((item) => cleanPass(item)) : [],
   };
 }
@@ -104,6 +120,11 @@ function normalize(saved) {
   next.patients = (saved.patients || []).map(patientRecord);
   next.tours = Object.fromEntries(Object.entries(saved.tours || {}).map(([key, tour]) => [key, migrateTour(tour)]));
   next.done = saved.done || {};
+  next.notes = {};
+  for (const [id, list] of Object.entries(saved.notes || {})) {
+    if (!Array.isArray(list)) continue;
+    next.notes[id] = list.filter((item) => item && item.at).slice(-80);
+  }
   next.updatedAt = Number(saved.updatedAt) || 0;
   return next;
 }
@@ -167,6 +188,7 @@ function receiveSync(remote) {
   state.patients = next.patients;
   state.tours = next.tours;
   state.done = next.done;
+  state.notes = next.notes;
   state.updatedAt = next.updatedAt;
   save({ remote: true });
   render();
@@ -382,6 +404,81 @@ function activePatients() {
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 }
 
+function dayList(patient) {
+  const set = new Set(patient.days || []);
+  return WEEK.filter(([day]) => set.has(day)).map(([, label]) => label).join(", ");
+}
+
+function phoneHref(phone) {
+  return String(phone || "").replace(/[^\d+]/g, "");
+}
+
+function captureVitals() {
+  const fields = document.querySelectorAll("[data-vital]");
+  if (!fields.length) return;
+  const values = {};
+  let stopId = "";
+  fields.forEach((field) => {
+    values[field.dataset.vital] = field.value;
+    stopId = field.dataset.stop || stopId;
+  });
+  vitalDraft = { stopId, values };
+}
+
+function vitalBlock(stopId) {
+  const values = vitalDraft.stopId === stopId ? vitalDraft.values : {};
+  const tiles = VITALS.map(([key, label, placeholder]) => `
+    <label>${label}<input data-vital="${key}" data-stop="${esc(stopId)}" inputmode="decimal" placeholder="${placeholder}" value="${esc(values[key] || "")}"></label>`).join("");
+  return `
+    <details class="vitals">
+      <summary>Constantes et transmission</summary>
+      <div class="vital-grid">${tiles}</div>
+      <label>Transmission<textarea data-vital="text" data-stop="${esc(stopId)}" rows="2" placeholder="Pour la collègue qui prend la suite">${esc(values.text || "")}</textarea></label>
+    </details>`;
+}
+
+function saveVitals(patientId, stopId) {
+  const values = vitalDraft.stopId === stopId ? vitalDraft.values : {};
+  const fields = {};
+  for (const [key] of VITALS) {
+    const value = String(values[key] || "").trim();
+    if (value) fields[key] = value;
+  }
+  const text = String(values.text || "").trim();
+  if (!text && !Object.keys(fields).length) return;
+  if (!state.notes) state.notes = {};
+  const list = state.notes[patientId] || [];
+  list.push({ id: uid(), at: Date.now(), date: todayKey(), stopId, text, ...fields });
+  state.notes[patientId] = list.slice(-80);
+  vitalDraft = { stopId: "", values: {} };
+}
+
+function vitalLine(note) {
+  return VITALS.map(([key, label]) => (note[key] ? `${label} ${note[key]}` : "")).filter(Boolean).join(" · ");
+}
+
+function notesOfDay() {
+  const key = todayKey();
+  const rows = [];
+  for (const patient of state.patients) {
+    for (const note of state.notes?.[patient.id] || []) {
+      if (note.date === key) rows.push({ patient, note });
+    }
+  }
+  rows.sort((a, b) => a.note.at - b.note.at);
+  return rows;
+}
+
+function historyHtml(patient) {
+  const notes = (state.notes?.[patient?.id] || []).slice().reverse().slice(0, 12);
+  if (!notes.length) return "";
+  return `<section class="history"><p class="label">Carnet</p>${notes.map((note) => {
+    const when = new Date(note.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const line = vitalLine(note);
+    return `<p><strong>${esc(when)}</strong>${line ? ` · ${esc(line)}` : ""}${note.text ? ` — ${esc(note.text)}` : ""}</p>`;
+  }).join("")}</section>`;
+}
+
 async function geocode(query) {
   const response = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1`);
   if (!response.ok) return null;
@@ -508,13 +605,18 @@ function openGps(patient) {
 
 function renderShell() {
   const date = selectedDate();
-  const titles = { tour: "Tournée", patients: "Patients", pick: "Patients du jour", pass: draft?.phase === "start" ? "Départ" : "Heure de passage" };
+  const titles = { tour: "Tournée", patients: "Patients", planning: "Planning", pick: "Patients du jour", pass: draft?.phase === "start" ? "Départ" : "Heure de passage" };
   els.dayLabel.textContent = `${dayOffset === 0 ? "Aujourd'hui" : "Demain"} · ${DAYS[date.getDay()]} ${date.getDate()}`;
   els.title.textContent = titles[view] || "Tournée";
   document.querySelector("#day-today").classList.toggle("on", dayOffset === 0);
   document.querySelector("#day-tomorrow").classList.toggle("on", dayOffset === 1);
   document.querySelectorAll("[data-view]").forEach((button) => {
-    const on = button.dataset.view === "patients" ? view === "patients" : view !== "patients";
+    const name = button.dataset.view;
+    const on = name === "patients"
+      ? view === "patients"
+      : name === "planning"
+        ? view === "planning"
+        : view !== "patients" && view !== "planning";
     button.classList.toggle("on", on);
   });
   document.body.classList.toggle("in-pass", view === "pass");
@@ -599,8 +701,9 @@ function renderTour() {
           <strong>${next.stop.minutes} min</strong>
           <button type="button" data-step="5" data-id="${esc(next.stop.id)}" aria-label="Ajouter 5 minutes">+</button>
         </div>
+        ${vitalBlock(next.stop.id)}
         <div class="stack">
-          ${next.patient.phone ? `<a class="linkish" href="tel:${esc(next.patient.phone)}">Appeler</a>` : ""}
+          ${next.patient.phone ? `<a class="ghost" href="tel:${esc(phoneHref(next.patient.phone))}">Appeler</a>` : ""}
           ${tour?.goingTo === next.stop.id
             ? `<button type="button" class="primary" id="done-next">${lastPending ? (state.settings.returnHome ? "Soin fait, retour au départ" : "Soin fait, terminer") : "Soin fait, GPS suivant"}</button>`
             : `<button type="button" class="primary" id="go-next">Y aller</button>`}
@@ -649,6 +752,8 @@ function renderTour() {
       ${list.length ? `<button type="button" class="primary" id="organize" ${busy ? "disabled" : ""}>${busy ? "Optimisation…" : "Optimiser"}</button>` : ""}
       <button type="button" class="ghost" id="choose">${list.length ? "Changer les patients" : "Choisir les patients"}</button>
       ${list.length ? `<button type="button" class="ghost" id="print-tour">Imprimer la tournée</button>` : ""}
+      <button type="button" class="ghost" id="print-releve">Relevé pour la collègue</button>
+      <button type="button" class="ghost" id="fill-usual">Habituels du ${DAYS[selectedDate().getDay()]}</button>
       ${state.tours[dateKey(new Date())]?.stops?.length ? `<button type="button" class="ghost" id="copy-tomorrow">Même tournée pour demain</button>` : ""}
     </div>
     ${list.length ? `<p class="hint">L'heure de départ suit le premier patient. Optimiser classe les autres après, selon les adresses. « À la main », déjà fait ou absent, ne bouge pas.</p><ol class="stops">${stops}</ol>` : `<div class="empty"><strong>La journée n'est pas encore composée.</strong>Coche les patients dans ta base. Les horaires habituels reviennent tout seuls.</div>`}
@@ -805,6 +910,7 @@ function renderPatients() {
         <h3>${esc(patient.name)}${patient.paused ? " · en pause" : ""}</h3>
         <p class="meta">${esc(patient.address)}</p>
         <p class="meta">${esc(patient.care || "Soin")} · ${patient.habits?.length ? patient.habits.map((item) => whenLabel(item)).join(" · ") : `${patient.minutes} min habituelles`}</p>
+        ${dayList(patient) ? `<p class="meta">${esc(dayList(patient))}</p>` : ""}
         <div class="row-actions"><button type="button" data-edit="${esc(patient.id)}">Modifier</button></div>
       </article>`).join("") : `<div class="empty"><strong>La base est vide.</strong>Un nom et une adresse suffisent. Le temps du jour se choisit au moment de la tournée.</div>`}
     ${backupBlock()}`;
@@ -835,9 +941,27 @@ function backupBlock() {
     </section>`;
 }
 
+function renderPlanning() {
+  const blocks = WEEK.map(([day, label]) => {
+    const people = state.patients
+      .filter((patient) => !patient.paused && (patient.days || []).includes(day))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+    const cards = people.length
+      ? people.map((patient) => `<button type="button" data-edit="${esc(patient.id)}"><strong>${esc(patient.name)}</strong><small>${esc(patient.care || "Soin")}</small></button>`).join("")
+      : `<p class="hint">Personne ce jour.</p>`;
+    return `<section class="day-block"><h2>${label}</h2>${cards}</section>`;
+  }).join("");
+  els.app.innerHTML = `
+    <p class="hint">Coche les jours sur chaque fiche. Le jour venu, « Habituels du ${DAYS[selectedDate().getDay()]} » reprend ces patients avec leurs horaires.</p>
+    <div class="stack"><button type="button" class="primary" id="fill-usual">Préparer ${dayOffset === 0 ? "aujourd'hui" : "demain"}</button></div>
+    ${blocks}`;
+}
+
 function render() {
+  captureVitals();
   renderShell();
   if (view === "patients") renderPatients();
+  else if (view === "planning") renderPlanning();
   else if (view === "pick") renderPick();
   else if (view === "pass") renderPass();
   else renderTour();
@@ -846,6 +970,10 @@ function render() {
 }
 
 function renderPrint() {
+  if (printKind === "releve") {
+    renderReleve();
+    return;
+  }
   const list = rows();
   const etas = computeEtas();
   const date = selectedDate().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -879,6 +1007,29 @@ function renderPrint() {
     ${stops}
     ${returnEta ? `<p class="sheet-back">Retour au départ · ${returnEta.travel} min · arrivée ${formatHM(returnEta.arrive)}</p>` : state.settings.returnHome && from ? `<p class="sheet-back">Retour : ${esc(from)}</p>` : ""}
   ` : "";
+}
+
+function renderReleve() {
+  const date = selectedDate().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const blocks = notesOfDay().map(({ patient, note }) => {
+    const when = new Date(note.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const line = vitalLine(note);
+    return `
+      <article class="sheet-stop">
+        <div>
+          <p class="sheet-kicker">${esc(when)}</p>
+          <h2>${esc(patient.name)}</h2>
+          ${line ? `<p>${esc(line)}</p>` : ""}
+          ${note.text ? `<p class="sheet-strong">${esc(note.text)}</p>` : ""}
+        </div>
+      </article>`;
+  }).join("");
+  els.print.innerHTML = `
+    <header class="sheet-head">
+      <p>Relevé pour la relève</p>
+      <h1>${esc(date)}</h1>
+    </header>
+    ${blocks}`;
 }
 
 function bindSearch(selector, store) {
@@ -916,7 +1067,23 @@ function bindView() {
     view = "pick";
     render();
   });
-  document.querySelector("#print-tour")?.addEventListener("click", () => window.print());
+  document.querySelector("#print-tour")?.addEventListener("click", () => {
+    printKind = "tour";
+    renderPrint();
+    window.print();
+  });
+  document.querySelector("#print-releve")?.addEventListener("click", () => {
+    if (!notesOfDay().length) {
+      flash("Aucune constante ni transmission pour ce jour");
+      return;
+    }
+    printKind = "releve";
+    renderPrint();
+    window.print();
+    printKind = "tour";
+    renderPrint();
+  });
+  document.querySelector("#fill-usual")?.addEventListener("click", fillHabituels);
   document.querySelector("#copy-tomorrow")?.addEventListener("click", copyTodayToTomorrow);
   document.querySelector("#back-tour")?.addEventListener("click", () => {
     view = "tour";
@@ -1240,10 +1407,35 @@ function goToCurrent() {
   openGps(next.patient);
 }
 
+function fillHabituels() {
+  const day = selectedDate().getDay();
+  const ids = activePatients().filter((patient) => (patient.days || []).includes(day)).map((patient) => patient.id);
+  if (!ids.length) {
+    flash("Aucun habituel ce jour. Coche les jours sur la fiche.");
+    view = "planning";
+    render();
+    return;
+  }
+  const replacing = (currentTour()?.stops || []).length > 0;
+  draft = {
+    phase: "patient",
+    ids,
+    index: 0,
+    from: state.settings.startAddress,
+    geoLabel: state.settings.startLabel || "",
+    sheets: Object.fromEntries(ids.map((id) => [id, sheetFrom(patientById(id))])),
+  };
+  view = "pass";
+  render();
+  if (replacing) flash("Quand tu valides, ça remplace la tournée de ce jour");
+}
+
 function finishNext(status) {
   const list = pending();
   const current = list[0];
   if (!current) return;
+  captureVitals();
+  if (status === "done") saveVitals(current.patient.id, current.stop.id);
   const following = list[1];
   const tour = currentTour();
   if (tour) tour.goingTo = following ? following.stop.id : "";
@@ -1407,6 +1599,10 @@ function openEditor(id) {
   document.querySelector("#f-phone").value = patient?.phone || "";
   document.querySelector("#f-note").value = patient?.note || "";
   document.querySelector("#f-paused").checked = Boolean(patient?.paused);
+  document.querySelectorAll("#f-days button").forEach((button) => {
+    button.classList.toggle("on", (patient?.days || []).includes(Number(button.dataset.day)));
+  });
+  document.querySelector("#f-history").innerHTML = historyHtml(patient);
   document.querySelectorAll("#care-chips button").forEach((button) => button.classList.toggle("on", button.dataset.care === patient?.care));
   els.suggest.hidden = true;
   els.geoOk.hidden = !draftGeo?.label;
@@ -1437,6 +1633,7 @@ function readPatient() {
       phone: document.querySelector("#f-phone").value.trim(),
       note: document.querySelector("#f-note").value.trim(),
       paused: document.querySelector("#f-paused").checked,
+      days: [...document.querySelectorAll("#f-days button.on")].map((button) => Number(button.dataset.day)),
     },
   };
 }
@@ -1505,6 +1702,7 @@ async function importData(event) {
     state.patients = next.patients;
     state.tours = next.tours;
     state.done = next.done;
+    state.notes = next.notes;
     save();
     render();
     flash("Sauvegarde restaurée");
@@ -1531,6 +1729,7 @@ document.querySelector("#day-tomorrow").addEventListener("click", () => {
   render();
 });
 document.querySelector("#editor-close").addEventListener("click", () => els.editor.close());
+document.querySelectorAll("#f-days button").forEach((button) => button.addEventListener("click", () => button.classList.toggle("on")));
 document.querySelectorAll("#care-chips button").forEach((button) => button.addEventListener("click", () => {
   document.querySelector("#f-care").value = button.dataset.care;
   document.querySelector("#f-minutes").value = button.dataset.minutes;
