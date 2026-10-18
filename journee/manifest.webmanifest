@@ -1,9 +1,9 @@
 {
-  "name": "Journée",
-  "short_name": "Journée",
+  "name": "Ma tournée",
+  "short_name": "Tournée",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f6f1ea",
-  "theme_color": "#8d4b3e",
+  "background_color": "#fbeaf1",
+  "theme_color": "#f4c3d4",
   "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

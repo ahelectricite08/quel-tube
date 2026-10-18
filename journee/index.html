@@ -3,37 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#8d4b3e">
-  <meta name="description" content="Journée d'infirmière libérale : planning, tournées, cotations et relevé.">
+  <meta name="theme-color" content="#f4c3d4">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Journée">
-  <title>Journée</title>
+  <meta name="apple-mobile-web-app-title" content="Ma tournée">
+  <title>Ma tournée</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="top">
-    <div class="top-row">
-      <p class="eyebrow" id="when">Aujourd'hui</p>
-      <button type="button" class="text" id="open-settings">Réglages</button>
-    </div>
-    <h1 id="title">Journée</h1>
-  </header>
   <main id="app"></main>
+  <nav class="nav" id="nav" aria-label="Navigation">
+    <button type="button" data-nav="home" aria-label="Accueil"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></button>
+    <button type="button" data-nav="patients" aria-label="Patients"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5 19.2c1.4-3 3.8-4.4 7-4.4s5.6 1.4 7 4.4"/></svg></button>
+    <button type="button" data-nav="add" class="plus" aria-label="Ajouter">+</button>
+    <button type="button" data-nav="ca" aria-label="Chiffre d'affaires"><span class="euro">€</span></button>
+    <button type="button" data-nav="folder" aria-label="Dossier"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/></svg></button>
+  </nav>
   <section id="print-sheet" class="print-sheet" hidden></section>
   <p class="toast" id="toast" hidden></p>
-  <nav class="dock" aria-label="Sections">
-    <button type="button" data-view="jour" class="on">Journée</button>
-    <button type="button" data-view="planning">Planning</button>
-    <button type="button" data-view="patients">Patients</button>
-    <button type="button" data-view="compte">Compte</button>
-  </nav>
   <dialog id="sheet"></dialog>
   <div id="lock" class="lock" hidden>
-    <p class="eyebrow">Journée</p>
+    <p class="lock-kicker">Ma tournée</p>
     <h2>Ton code</h2>
-    <p class="pin-dots" id="pin-dots">••••</p>
+    <p class="pin-dots" id="pin-dots"></p>
     <div class="pad" id="pad"></div>
   </div>
   <script type="module" src="./app.js"></script>
