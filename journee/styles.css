@@ -98,7 +98,8 @@ textarea { min-height: 96px; }
 .vitals { margin-top: 12px; }
 .vitals summary { font-weight: 750; min-height: 44px; display: flex; align-items: center; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.grid input, .vitals textarea { font-size: 18px; }
+.grid input, .vitals textarea { font-size: 22px; min-height: 64px; }
+.struck { text-decoration: line-through; font-size: 18px; }
 .check { flex-direction: row; align-items: center; font-weight: 650; }
 .check input { width: auto; min-height: 0; }
 .tools { margin: 12px 0; }

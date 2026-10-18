@@ -19,7 +19,7 @@ const SLOTS = [
 const VITALS = [
   ["tension", "Tension", "12/8"],
   ["pouls", "Pouls", "72"],
-  ["glycemie", "Glycémie", "1,10"],
+  ["glycemie", "Glycémie / insuline", "1,10"],
   ["sat", "Saturation", "98"],
   ["douleur", "Douleur", "0-10"],
   ["temp", "Température", "37"],
@@ -96,6 +96,9 @@ function patientRecord(raw) {
     lon: raw.lon ?? null,
     geoLabel: raw.geoLabel || "",
     phone: raw.phone || "",
+    doctor: raw.doctor || "",
+    pharmacy: raw.pharmacy || "",
+    soins: raw.soins || "",
     note: raw.note || "",
     paused: Boolean(raw.paused),
     domicile: raw.domicile !== false,
@@ -281,8 +284,9 @@ function vitalBlock(key) {
   const values = vitalDraft.key === key ? vitalDraft.values : {};
   const tiles = VITALS.map(([name, label, placeholder]) => `
     <label>${label}<input data-vital="${name}" data-key="${esc(key)}" inputmode="decimal" placeholder="${placeholder}" value="${esc(values[name] || "")}"></label>`).join("");
-  return `<details class="vitals"><summary>Constantes et transmission</summary><div class="grid">${tiles}</div>
-    <label>Transmission<textarea data-vital="text" data-key="${esc(key)}" rows="2" placeholder="Pour la collègue">${esc(values.text || "")}</textarea></label></details>`;
+  return `<section class="vitals"><p class="label">Constantes et transmission</p><div class="grid">${tiles}</div>
+    <label>Transmission<textarea data-vital="text" data-key="${esc(key)}" rows="2" placeholder="Pour la collègue">${esc(values.text || "")}</textarea></label>
+    <button type="button" class="ghost" id="save-vitals">Noter</button></section>`;
 }
 
 function saveVitals(patientId, key) {
@@ -293,11 +297,12 @@ function saveVitals(patientId, key) {
     if (value) fields[name] = value;
   }
   const text = String(values.text || "").trim();
-  if (!text && !Object.keys(fields).length) return;
+  if (!text && !Object.keys(fields).length) return false;
   const list = state.notes[patientId] || [];
   list.push({ id: uid(), at: Date.now(), date: cursor, key, text, ...fields });
   state.notes[patientId] = list.slice(-80);
   vitalDraft = { key: "", values: {} };
+  return true;
 }
 
 function vitalLine(note) {
@@ -339,6 +344,9 @@ function renderJour() {
         <h2 class="name">${esc(next.patient.name)}</h2>
         <p>${esc(next.patient.geoLabel || next.patient.address)}</p>
         <p class="meta">${esc(next.label)} · ${esc(actsLabel(next.passage))}${eta ? ` · arrivée ${formatHM(eta.start)}` : ""}</p>
+        ${next.patient.doctor ? `<p class="meta">Médecin : ${esc(next.patient.doctor)}</p>` : ""}
+        ${next.patient.pharmacy ? `<p class="meta">Pharmacie : ${esc(next.patient.pharmacy)}</p>` : ""}
+        ${next.patient.soins ? `<p class="meta">${esc(next.patient.soins)}</p>` : ""}
         <p class="money">${euro.format(price?.total || 0)}</p>
         ${next.patient.note ? `<p class="note">${esc(next.patient.note)}</p>` : ""}
         ${vitalBlock(next.key)}
@@ -348,6 +356,7 @@ function renderJour() {
             ? `<button type="button" class="primary" id="done-next">${pending.length === 1 ? "Soin fait, terminer" : "Soin fait, GPS suivant"}</button>`
             : `<button type="button" class="primary" id="go-next">Y aller</button>`}
           <button type="button" class="ghost" id="absent-next">Absent, passer au suivant</button>
+          <button type="button" class="ghost" data-order="${esc(next.patient.id)}">Ordonnance</button>
         </div>
       </article>`;
   } else if (stops.length) {
@@ -384,6 +393,7 @@ function renderJour() {
     <div class="stack">
       ${stops.length ? `<button type="button" class="primary" id="organize" ${busy ? "disabled" : ""}>${busy ? "Organisation…" : "Organiser la tournée"}</button>` : ""}
       ${stops.length ? `<button type="button" class="ghost" id="print-releve">Relevé pour la collègue</button>` : ""}
+      ${stops.length ? `<button type="button" class="ghost" id="share-releve">Envoyer le relevé</button>` : ""}
       <button type="button" class="ghost" id="add-from-day">Ajouter un patient</button>
     </div>
     ${stops.length ? `<ol class="stops">${rows}</ol>` : `<div class="empty"><strong>Personne sur cette journée.</strong>Ajoute un patient, coche ses jours, et le créneau de 2 heures. Organiser classe la route.</div>`}
@@ -433,7 +443,7 @@ function renderPatients() {
       <h3>${esc(patient.name)}${patient.paused ? " · en pause" : ""}</h3>
       <p class="meta">${esc(patient.address)}</p>
       <p class="meta">${esc((patient.days || []).map((day) => DAYS[day]).join(", ") || "Aucun jour")} · ${esc(patient.passages.map((item) => slotOf(item.slot)[1]).join(" · "))}</p>
-      <div class="row"><button type="button" data-edit="${esc(patient.id)}">Modifier</button><button type="button" data-order="${esc(patient.id)}">Ordonnance</button></div>
+      <div class="row"><button type="button" data-edit="${esc(patient.id)}">Modifier</button><button type="button" data-chevet="${esc(patient.id)}">Au chevet</button><button type="button" data-order="${esc(patient.id)}">Ordonnance</button></div>
     </article>`).join("") || `<div class="empty"><strong>Aucun patient dans ce cabinet.</strong>Un nom, une adresse, les jours et les soins suffisent.</div>`}`;
 }
 
@@ -481,6 +491,14 @@ function bind() {
   document.querySelector("#add-from-day")?.addEventListener("click", () => openPatient(null));
   document.querySelector("#add-patient")?.addEventListener("click", () => openPatient(null));
   document.querySelector("#print-releve")?.addEventListener("click", printReleve);
+  document.querySelector("#share-releve")?.addEventListener("click", shareReleve);
+  document.querySelector("#save-vitals")?.addEventListener("click", () => {
+    const next = orderedStops().find((stop) => !statusOf(stop.key));
+    if (!next) return;
+    captureVitals();
+    flash(saveVitals(next.patient.id, next.key) ? "C'est noté" : "Écris une constante ou une transmission");
+    render();
+  });
   document.querySelector("#print-compte")?.addEventListener("click", printCompte);
   document.querySelector("#search")?.addEventListener("input", (event) => {
     renderPatients.query = event.target.value;
@@ -491,6 +509,7 @@ function bind() {
   });
   els.app.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openPatient(button.dataset.edit)));
   els.app.querySelectorAll("[data-order]").forEach((button) => button.addEventListener("click", () => openOrder(button.dataset.order)));
+  els.app.querySelectorAll("[data-chevet]").forEach((button) => button.addEventListener("click", () => openChevet(button.dataset.chevet)));
   els.app.querySelectorAll("[data-open-day]").forEach((button) => button.addEventListener("click", () => {
     cursor = button.dataset.openDay;
     view = "jour";
@@ -681,6 +700,9 @@ function openPatient(id) {
       <label>Adresse<input name="address" required value="${esc(patient.address)}" placeholder="Numéro, rue, ville" autocomplete="off"></label>
       <ul class="suggest" hidden></ul>
       <label>Téléphone<input name="phone" value="${esc(patient.phone)}" inputmode="tel"></label>
+      <label>Médecin traitant<input name="doctor" value="${esc(patient.doctor)}" placeholder="Nom du médecin"></label>
+      <label>Pharmacie<input name="pharmacy" value="${esc(patient.pharmacy)}" placeholder="Nom ou adresse"></label>
+      <label>Soins en cours<input name="soins" value="${esc(patient.soins)}" placeholder="Pansement, insuline, toilette…"></label>
       <label>Accès<input name="note" value="${esc(patient.note)}" placeholder="Digicode, étage"></label>
       <label>Cabinet<select name="cabinet">${state.cabinets.map((item) => `<option value="${esc(item.id)}" ${item.id === (patient.cabinetId || cabinet().id) ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
       <p class="label">Jours</p>
@@ -739,6 +761,9 @@ function bindPatient(patient) {
       name,
       address,
       phone: String(data.get("phone") || "").trim(),
+      doctor: String(data.get("doctor") || "").trim(),
+      pharmacy: String(data.get("pharmacy") || "").trim(),
+      soins: String(data.get("soins") || "").trim(),
       note: String(data.get("note") || "").trim(),
       cabinetId: String(data.get("cabinet") || cabinet().id),
       domicile: data.get("domicile") === "on",
@@ -837,27 +862,83 @@ function printOrder(patient, order) {
     <p><strong>${esc(patient.name)}</strong><br>${esc(patient.address)}</p>
     ${order.ald ? `<p class="sheet-strong">Ordonnance pour affection de longue durée</p>` : ""}
     <p class="sheet-body">${esc(order.text)}</p>
-    ${order.replacement && cabinet().titulaire ? `<p>En remplacement de ${esc(cabinet().titulaire)}</p>` : ""}
+    ${order.replacement && cabinet().titulaire ? `<p class="struck">${esc(cabinet().titulaire)}</p><p>En remplacement</p>` : ""}
     ${state.settings.signature ? `<img class="sign" alt="Signature" src="${state.settings.signature}">` : ""}
     <p class="sheet-strong">${esc(nurse)}${state.settings.rpps ? `<br>RPPS ${esc(state.settings.rpps)}` : ""}</p>`;
   window.print();
 }
 
-function printReleve() {
-  const notes = [];
-  for (const stop of orderedStops()) {
-    for (const note of state.notes[stop.patient.id] || []) {
-      if (note.date === cursor && note.key === stop.key) notes.push({ stop, note });
-    }
+function notesOfDay() {
+  const ids = new Set(state.patients.filter((patient) => patient.cabinetId === cabinet().id).map((patient) => patient.id));
+  const rows = [];
+  for (const [patientId, list] of Object.entries(state.notes || {})) {
+    if (!ids.has(patientId)) continue;
+    const patient = patientById(patientId);
+    if (!patient) continue;
+    for (const note of list) if (note.date === cursor) rows.push({ patient, note });
   }
+  rows.sort((a, b) => a.note.at - b.note.at);
+  return rows;
+}
+
+function releveText() {
+  return notesOfDay().map(({ patient, note }) => {
+    const when = new Date(note.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return [`${when} · ${patient.name}`, vitalLine(note), note.text].filter(Boolean).join("\n");
+  }).join("\n\n");
+}
+
+function printReleve() {
+  const notes = notesOfDay();
   if (!notes.length) { flash("Aucune transmission pour ce jour"); return; }
-  const blocks = notes.map(({ stop, note }) => `
-    <article class="sheet-stop"><p class="sheet-kicker">${esc(new Date(note.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }))} · ${esc(stop.label)}</p>
-    <h2>${esc(stop.patient.name)}</h2>
+  const blocks = notes.map(({ patient, note }) => `
+    <article class="sheet-stop"><p class="sheet-kicker">${esc(new Date(note.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }))}</p>
+    <h2>${esc(patient.name)}</h2>
     ${vitalLine(note) ? `<p>${esc(vitalLine(note))}</p>` : ""}
     ${note.text ? `<p class="sheet-strong">${esc(note.text)}</p>` : ""}</article>`).join("");
   els.print.innerHTML = `<header class="sheet-head"><p>Relevé pour la relève</p><h1>${esc(dateLabel(cursor))}</h1></header>${blocks}`;
   window.print();
+}
+
+async function shareReleve() {
+  const text = releveText();
+  if (!text) { flash("Aucune transmission pour ce jour"); return; }
+  const title = `Relevé ${dateLabel(cursor)}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text });
+      return;
+    } catch { /* partage annulé */ }
+  }
+  printReleve();
+}
+
+function openChevet(id) {
+  const patient = patientById(id);
+  if (!patient) return;
+  const key = `fiche:${id}`;
+  const history = (state.notes[id] || []).slice().reverse().slice(0, 8).map((note) => {
+    const when = new Date(note.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    return `<p><strong>${esc(when)}</strong> ${esc(vitalLine(note))}${note.text ? ` — ${esc(note.text)}` : ""}</p>`;
+  }).join("");
+  openSheet(`
+    <form id="chevet-form">
+      <div class="dialog-head"><h2>${esc(patient.name)}</h2><button type="button" class="text" data-close>Fermer</button></div>
+      <p class="meta">${esc(patient.address)}</p>
+      ${patient.doctor ? `<p class="meta">Médecin : ${esc(patient.doctor)}</p>` : ""}
+      ${patient.pharmacy ? `<p class="meta">Pharmacie : ${esc(patient.pharmacy)}</p>` : ""}
+      ${vitalBlock(key).replace('id="save-vitals"', 'id="save-chevet"')}
+      ${history ? `<section class="history"><p class="label">Carnet</p>${history}</section>` : ""}
+    </form>`, () => {
+    const form = document.querySelector("#chevet-form");
+    form.querySelector("[data-close]").addEventListener("click", closeSheet);
+    form.querySelector("#save-chevet").addEventListener("click", () => {
+      captureVitals();
+      if (!saveVitals(id, key)) { flash("Écris une constante ou une transmission"); return; }
+      flash("C'est noté");
+      openChevet(id);
+    });
+  });
 }
 
 function printCompte() {
