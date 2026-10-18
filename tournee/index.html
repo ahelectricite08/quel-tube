@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c6b52">
+  <meta name="description" content="Tournée d'infirmière libérale : patients, créneaux, route et GPS.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tournée">
+  <title>Tournée libérale</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <p class="eyebrow" id="day-label">Aujourd'hui</p>
+      <div class="day-switch" role="group" aria-label="Jour">
+        <button type="button" id="day-today" class="on">Aujourd'hui</button>
+        <button type="button" id="day-tomorrow">Demain</button>
+      </div>
+    </div>
+    <h1 id="page-title">Tournée</h1>
+  </header>
+
+  <main id="app"></main>
+  <section id="print-sheet" class="print-sheet" hidden></section>
+  <p class="toast" id="toast" role="status" hidden></p>
+
+  <nav class="dock" aria-label="Sections">
+    <button type="button" data-view="tour" class="on">Tournée</button>
+    <button type="button" data-view="patients">Patients</button>
+  </nav>
+
+  <dialog id="editor">
+    <form id="patient-form">
+      <div class="dialog-head">
+        <h2 id="editor-title">Patient</h2>
+        <button type="button" class="text" id="editor-close">Fermer</button>
+      </div>
+
+      <label>Nom<input id="f-name" name="name" autocomplete="name" required placeholder="Nom et prénom"></label>
+      <label>Adresse
+        <input id="f-address" name="address" autocomplete="off" required placeholder="Numéro, rue, ville">
+      </label>
+      <ul id="f-suggest" class="suggest" hidden></ul>
+      <p class="geo-ok" id="geo-ok" hidden></p>
+
+      <p class="label">Soin habituel</p>
+      <div class="chips" id="care-chips">
+        <button type="button" data-care="Injection" data-minutes="10">Injection · 10</button>
+        <button type="button" data-care="Pansement" data-minutes="20">Pansement · 20</button>
+        <button type="button" data-care="Prise de sang" data-minutes="15">Prise de sang · 15</button>
+        <button type="button" data-care="Toilette" data-minutes="45">Toilette · 45</button>
+        <button type="button" data-care="Perfusion" data-minutes="30">Perfusion · 30</button>
+      </div>
+      <div class="split">
+        <label>Nom du soin<input id="f-care" name="care" placeholder="Pansement, insuline…"></label>
+        <label>Minutes habituelles<input id="f-minutes" name="minutes" type="number" inputmode="numeric" min="5" max="180" step="5" value="20" required></label>
+      </div>
+      <p class="hint">Ce temps est proposé quand tu prépares la tournée. Tu le confirmes patient par patient.</p>
+      <label>Téléphone<input id="f-phone" type="tel" inputmode="tel" placeholder="06…"></label>
+      <label>Accès<input id="f-note" placeholder="Digicode, étage, chien, où se garer"></label>
+      <label class="check"><input id="f-paused" type="checkbox"> En pause (hospitalisé, absent longtemps)</label>
+
+      <div class="dialog-actions">
+        <button type="button" class="danger" id="f-delete" hidden>Supprimer</button>
+        <button type="submit" class="primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
