@@ -1,0 +1,9 @@
+{
+  "name": "Journée",
+  "short_name": "Journée",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f1ea",
+  "theme_color": "#8d4b3e",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

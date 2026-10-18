@@ -30,7 +30,6 @@
 
   <nav class="dock" aria-label="Sections">
     <button type="button" data-view="tour" class="on">Tournée</button>
-    <button type="button" data-view="planning">Planning</button>
     <button type="button" data-view="patients">Patients</button>
   </nav>
 
@@ -64,18 +63,6 @@
       <label>Téléphone<input id="f-phone" type="tel" inputmode="tel" placeholder="06…"></label>
       <label>Accès<input id="f-note" placeholder="Digicode, étage, chien, où se garer"></label>
       <label class="check"><input id="f-paused" type="checkbox"> En pause (hospitalisé, absent longtemps)</label>
-      <p class="label">Jours habituels</p>
-      <div class="days" id="f-days">
-        <button type="button" data-day="1">Lun</button>
-        <button type="button" data-day="2">Mar</button>
-        <button type="button" data-day="3">Mer</button>
-        <button type="button" data-day="4">Jeu</button>
-        <button type="button" data-day="5">Ven</button>
-        <button type="button" data-day="6">Sam</button>
-        <button type="button" data-day="0">Dim</button>
-      </div>
-      <p class="hint">Ces jours préparent la tournée tout seuls, avec les horaires déjà enregistrés.</p>
-      <div id="f-history"></div>
 
       <div class="dialog-actions">
         <button type="button" class="danger" id="f-delete" hidden>Supprimer</button>

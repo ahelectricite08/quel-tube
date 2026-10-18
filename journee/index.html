@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#8d4b3e">
+  <meta name="description" content="Journée d'infirmière libérale : planning, tournées, cotations et relevé.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Journée">
+  <title>Journée</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <p class="eyebrow" id="when">Aujourd'hui</p>
+      <button type="button" class="text" id="open-settings">Réglages</button>
+    </div>
+    <h1 id="title">Journée</h1>
+  </header>
+  <main id="app"></main>
+  <section id="print-sheet" class="print-sheet" hidden></section>
+  <p class="toast" id="toast" hidden></p>
+  <nav class="dock" aria-label="Sections">
+    <button type="button" data-view="jour" class="on">Journée</button>
+    <button type="button" data-view="planning">Planning</button>
+    <button type="button" data-view="patients">Patients</button>
+    <button type="button" data-view="compte">Compte</button>
+  </nav>
+  <dialog id="sheet"></dialog>
+  <div id="lock" class="lock" hidden>
+    <p class="eyebrow">Journée</p>
+    <h2>Ton code</h2>
+    <p class="pin-dots" id="pin-dots">••••</p>
+    <div class="pad" id="pad"></div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

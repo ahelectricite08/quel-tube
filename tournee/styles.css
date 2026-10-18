@@ -122,34 +122,7 @@ h1 { margin: 8px 0 14px; }
 .ghost, .gps { background: #efe8db; }
 .danger { background: transparent; color: var(--late); padding-inline: 0; }
 .stack { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.stack .ghost, .stack a.ghost { width: 100%; }
-.stack a.ghost {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  color: inherit;
-}
-.vitals { margin-top: 12px; }
-.vitals summary { font-weight: 750; min-height: 44px; display: flex; align-items: center; cursor: pointer; }
-.vital-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.vital-grid input, .vitals textarea { font-size: 18px; }
-.day-block { margin: 16px 0; }
-.day-block h2 { font-size: 18px; text-transform: capitalize; margin-bottom: 8px; }
-.day-block button {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  text-align: left;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-}
-.day-block small { color: var(--muted); }
-.history p { margin: 0 0 8px; font-size: 15px; }
-#f-days button.on { border: 1px solid var(--green); background: #e7eee3; color: var(--green-deep); }
+.stack .ghost { width: 100%; }
 .banner.leave { background: #e7eee3; border-color: #c6d2bc; }
 .banner.leave strong { font-size: 22px; }
 .banner {
@@ -296,7 +269,7 @@ h1 { margin: 8px 0 14px; }
   z-index: 5;
   box-shadow: var(--shadow);
 }
-.dock button { flex: 1; min-height: 52px; font-size: 15px; padding: 0 6px; }
+.dock button { flex: 1; min-height: 52px; }
 
 #editor {
   width: min(560px, calc(100vw - 20px));
