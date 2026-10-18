@@ -601,7 +601,9 @@ function renderTour() {
         </div>
         <div class="stack">
           ${next.patient.phone ? `<a class="linkish" href="tel:${esc(next.patient.phone)}">Appeler</a>` : ""}
-          <button type="button" class="primary" id="done-next">${lastPending ? (state.settings.returnHome ? "Soin fait, retour au départ" : "Soin fait, terminer") : "Soin fait, GPS suivant"}</button>
+          ${tour?.goingTo === next.stop.id
+            ? `<button type="button" class="primary" id="done-next">${lastPending ? (state.settings.returnHome ? "Soin fait, retour au départ" : "Soin fait, terminer") : "Soin fait, GPS suivant"}</button>`
+            : `<button type="button" class="primary" id="go-next">Y aller</button>`}
           <button type="button" class="ghost" id="absent-next">Absent, passer au suivant</button>
         </div>
       </article>`;
@@ -922,6 +924,7 @@ function bindView() {
   });
   document.querySelector("#to-pass")?.addEventListener("click", startPass);
   document.querySelector("#organize")?.addEventListener("click", () => organize());
+  document.querySelector("#go-next")?.addEventListener("click", goToCurrent);
   document.querySelector("#done-next")?.addEventListener("click", () => finishNext("done"));
   document.querySelector("#absent-next")?.addEventListener("click", () => finishNext("absent"));
   document.querySelector("#add-patient")?.addEventListener("click", () => openEditor(null));
@@ -1227,11 +1230,23 @@ function reoptimizeAfter(movedId) {
   tour.order = [...next.map((index) => located[index]), ...unknown];
 }
 
+function goToCurrent() {
+  const next = pending()[0];
+  const tour = currentTour();
+  if (!next || !tour) return;
+  tour.goingTo = next.stop.id;
+  save();
+  render();
+  openGps(next.patient);
+}
+
 function finishNext(status) {
   const list = pending();
   const current = list[0];
   if (!current) return;
   const following = list[1];
+  const tour = currentTour();
+  if (tour) tour.goingTo = following ? following.stop.id : "";
   markStatus(current.stop.id, status);
   render();
   window.scrollTo({ top: 0, behavior: "smooth" });
