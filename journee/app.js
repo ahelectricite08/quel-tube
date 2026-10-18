@@ -48,7 +48,7 @@ const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 
 function blank() {
   return {
-    settings: { pin: "", nurse: "", rpps: "", gps: "google", zone: "plaine", signature: "", cabinetId: "" },
+    settings: { pin: "2106", pinApplied: true, nurse: "", rpps: "", gps: "google", zone: "plaine", signature: "", cabinetId: "" },
     cabinets: [],
     patients: [],
     days: {},
@@ -75,6 +75,8 @@ function freshCabinet() {
 function normalize(saved) {
   const next = blank();
   next.settings = { ...next.settings, ...(saved.settings || {}) };
+  if (!saved.settings?.pinApplied && !saved.settings?.pin) next.settings.pin = "2106";
+  next.settings.pinApplied = true;
   next.cabinets = (saved.cabinets || []).map((item) => ({ ...freshCabinet(), ...item, id: item.id || uid() }));
   if (!next.cabinets.length) next.cabinets.push(freshCabinet());
   if (!next.cabinets.some((item) => item.id === next.settings.cabinetId)) next.settings.cabinetId = next.cabinets[0].id;
