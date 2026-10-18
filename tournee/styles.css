@@ -4,8 +4,8 @@
   --muted: #5d675f;
   --line: #e4dccf;
   --card: #fffdf8;
-  --green: #0c6b52;
-  --green-deep: #084536;
+  --green: #6f8664;
+  --green-deep: #4c5b46;
   --gold: #f4c95d;
   --late: #9f2d2d;
   --wait: #8a5a12;
@@ -123,7 +123,7 @@ h1 { margin: 8px 0 14px; }
 .danger { background: transparent; color: var(--late); padding-inline: 0; }
 .stack { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .stack .ghost { width: 100%; }
-.banner.leave { background: #e7f3ee; border-color: #b7d7cb; }
+.banner.leave { background: #e7eee3; border-color: #c6d2bc; }
 .banner.leave strong { font-size: 22px; }
 .banner {
   background: #fff6df;
@@ -134,7 +134,7 @@ h1 { margin: 8px 0 14px; }
 .banner.bad { background: #fdecec; border-color: #f0c7c7; color: var(--late); }
 
 .now-kicker { font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--green); }
-.stop-card { margin-bottom: 16px; border-color: #b7d7cb; }
+.stop-card { margin-bottom: 16px; border-color: #c6d2bc; }
 .name {
   font-family: Palatino, Georgia, serif;
   font-size: 30px;
@@ -194,7 +194,7 @@ h1 { margin: 8px 0 14px; }
   padding: 4px 8px;
   font-size: 12px;
   font-weight: 750;
-  background: #e7f3ee;
+  background: #e7eee3;
   color: var(--green-deep);
 }
 .badge.wait { background: #fff1d6; color: var(--wait); }
@@ -288,7 +288,7 @@ h1 { margin: 8px 0 14px; }
 .check input { width: auto; min-height: 0; margin: 0; }
 .chips, .days { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button, .days button { background: white; border: 1px solid var(--line); }
-.chips button.on { border-color: var(--green); background: #e7f3ee; }
+.chips button.on { border-color: var(--green); background: #e7eee3; }
 .suggest {
   list-style: none;
   margin: -6px 0 0;
