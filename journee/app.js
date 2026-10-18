@@ -1076,7 +1076,7 @@ function setupLock() {
     else if (typed.length < 4) typed += key;
     paint();
     if (typed.length === 4) {
-      if (typed === state.settings.pin) {
+      if (typed === String(state.settings.pin || "")) {
         unlocked = true;
         document.body.classList.remove("locked");
         els.lock.hidden = true;
