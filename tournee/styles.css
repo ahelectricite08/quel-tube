@@ -81,7 +81,7 @@ h1 { margin: 8px 0 14px; }
   cursor: pointer;
 }
 .depart label, .dialog label, .label { display: block; font-size: 13px; font-weight: 700; color: var(--muted); }
-.depart input, .dialog input, .dialog select, .search input {
+.depart input, .dialog input, .dialog select, .search input, .backup input {
   width: 100%;
   margin-top: 6px;
   min-height: 48px;
@@ -250,6 +250,13 @@ h1 { margin: 8px 0 14px; }
 .empty strong { display: block; color: var(--ink); font-size: 22px; margin-bottom: 6px; }
 
 .backup { margin-top: 18px; }
+.backup h2 { font-size: 22px; margin-bottom: 6px; }
+.sync-code {
+  margin: 10px 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
 .backup .ghost { width: auto; }
 .file { display: inline-flex; align-items: center; }
 

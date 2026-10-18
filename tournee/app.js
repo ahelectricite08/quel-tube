@@ -1,4 +1,5 @@
 import { optimizeFree, placeAfter, planRoute, travelMinutesFallback } from "./route.js";
+import { chooseSide, createCode, encryptState, formatCode, normalizeCode, openSync } from "./sync.js";
 
 const KEY = "tournee-idel-v2";
 const DAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
@@ -25,6 +26,11 @@ let draftGeo = null;
 let suggestSeq = 0;
 let busy = false;
 let draft = null;
+const SYNC_CODE = "tournee-sync-code";
+let syncNote = "Pas encore relié. Crée un code, colle-le sur l'autre appareil : une adresse changée d'un côté arrive de l'autre.";
+let syncLink = null;
+let syncTimer = 0;
+let syncHeard = false;
 
 function blank() {
   return {
@@ -98,14 +104,79 @@ function normalize(saved) {
   next.patients = (saved.patients || []).map(patientRecord);
   next.tours = Object.fromEntries(Object.entries(saved.tours || {}).map(([key, tour]) => [key, migrateTour(tour)]));
   next.done = saved.done || {};
+  next.updatedAt = Number(saved.updatedAt) || 0;
   return next;
 }
 
-function save() {
+function save(options = {}) {
   const cutoff = dateKey(addDays(new Date(), -14));
   for (const key of Object.keys(state.done)) if (key < cutoff) delete state.done[key];
   for (const key of Object.keys(state.tours)) if (key < cutoff) delete state.tours[key];
+  if (!options.remote) state.updatedAt = Date.now();
   localStorage.setItem(KEY, JSON.stringify(state));
+  if (!options.remote) scheduleSync();
+}
+
+function scheduleSync() {
+  if (!syncLink || !localStorage.getItem(SYNC_CODE)) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => pushSync(), 700);
+}
+
+async function pushSync() {
+  const code = localStorage.getItem(SYNC_CODE);
+  if (!code || !syncLink) return;
+  try {
+    syncLink.publish(await encryptState(code, state));
+  } catch {
+    syncNote = "L'envoi a échoué";
+  }
+}
+
+function connectSync() {
+  const code = normalizeCode(localStorage.getItem(SYNC_CODE) || "");
+  if (code.length !== 16) return;
+  syncLink?.close();
+  syncHeard = false;
+  syncLink = openSync(code, {
+    onStatus(text) {
+      syncNote = text;
+      const note = document.querySelector("#sync-note");
+      if (note) note.textContent = text;
+    },
+    onState(remote) {
+      syncHeard = true;
+      receiveSync(remote);
+    },
+  });
+  setTimeout(() => {
+    if (!syncHeard && state.patients.length) pushSync();
+  }, 2000);
+}
+
+function receiveSync(remote) {
+  let next = null;
+  try { next = normalize(remote); } catch { return; }
+  const choice = chooseSide(state, next);
+  if (choice === "local") {
+    scheduleSync();
+    return;
+  }
+  if (choice !== "remote") return;
+  state.settings = next.settings;
+  state.patients = next.patients;
+  state.tours = next.tours;
+  state.done = next.done;
+  state.updatedAt = next.updatedAt;
+  save({ remote: true });
+  render();
+  flash("Mis à jour depuis l'autre appareil");
+}
+
+function useSyncCode(code) {
+  localStorage.setItem(SYNC_CODE, normalizeCode(code));
+  connectSync();
+  render();
 }
 
 function uid() {
@@ -738,10 +809,23 @@ function renderPatients() {
 }
 
 function backupBlock() {
+  const code = localStorage.getItem(SYNC_CODE) || "";
   return `
     <section class="backup">
-      <h2>Emporter la base</h2>
-      <p class="hint">Télécharge le fichier ici, puis sur l'autre téléphone ouvre la même page et importe-le. Les noms restent dans le fichier, ils ne partent pas tout seuls.</p>
+      <h2>Téléphone et ordinateur</h2>
+      <p class="hint" id="sync-note">${esc(syncNote)}</p>
+      ${code ? `
+        <p class="sync-code">${esc(formatCode(code))}</p>
+        <div class="row-actions">
+          <button type="button" id="sync-copy">Copier le code</button>
+          <button type="button" id="sync-stop">Arrêter la liaison</button>
+        </div>` : `
+        <div class="stack">
+          <button type="button" class="primary" id="sync-create">Créer le code</button>
+          <label>Code de l'autre appareil<input id="sync-paste" autocomplete="off" placeholder="Colle le code ici"></label>
+          <button type="button" class="ghost" id="sync-join">Relier avec ce code</button>
+        </div>`}
+      <p class="hint">Le code est le secret. Sans lui, les noms ne se lisent pas. Garde-le pour tes appareils seulement.</p>
       <div class="row-actions">
         <button type="button" id="export-data">Télécharger la base</button>
         <label class="file ghost">Importer<input id="import-data" type="file" accept="application/json" hidden></label>
@@ -841,6 +925,31 @@ function bindView() {
   document.querySelector("#done-next")?.addEventListener("click", () => finishNext("done"));
   document.querySelector("#absent-next")?.addEventListener("click", () => finishNext("absent"));
   document.querySelector("#add-patient")?.addEventListener("click", () => openEditor(null));
+  document.querySelector("#sync-create")?.addEventListener("click", () => useSyncCode(createCode()));
+  document.querySelector("#sync-join")?.addEventListener("click", () => {
+    const code = normalizeCode(document.querySelector("#sync-paste")?.value);
+    if (code.length !== 16) {
+      flash("Le code doit faire 16 caractères");
+      return;
+    }
+    useSyncCode(code);
+  });
+  document.querySelector("#sync-copy")?.addEventListener("click", async () => {
+    const code = formatCode(localStorage.getItem(SYNC_CODE) || "");
+    try {
+      await navigator.clipboard.writeText(code.replace(/ /g, ""));
+      flash("Code copié");
+    } catch {
+      flash(code);
+    }
+  });
+  document.querySelector("#sync-stop")?.addEventListener("click", () => {
+    syncLink?.close();
+    syncLink = null;
+    localStorage.removeItem(SYNC_CODE);
+    syncNote = "Liaison arrêtée sur cet appareil.";
+    render();
+  });
   document.querySelector("#export-data")?.addEventListener("click", exportData);
   document.querySelector("#import-data")?.addEventListener("change", importData);
   bindSearch("#patient-search", renderPatients);
@@ -1472,3 +1581,4 @@ const recovered = state.recovered;
 delete state.recovered;
 if (recovered) save();
 render();
+connectSync();
