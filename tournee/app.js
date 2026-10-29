@@ -609,7 +609,7 @@ function renderTour() {
     current = `
       <article class="stop-card">
         <p class="now-kicker">Prochain passage</p>
-        <h2 class="name">${esc(rowName(next))}</h2>
+        <h2 class="name"><button type="button" class="when-link" data-when="${esc(next.patient.id)}">${esc(rowName(next))}</button></h2>
         <p>${esc(next.patient.geoLabel || next.patient.address)}</p>
         <p class="meta">${esc(next.patient.care || "Soin")} · ${next.stop.minutes} min · ${esc(whenLabel(next.stop))}${eta ? ` · fin ${formatHM(eta.end)}` : ""}</p>
         ${etaBadges(eta, next.stop)}
@@ -624,6 +624,7 @@ function renderTour() {
           ${tour?.goingTo === next.stop.id
             ? `<button type="button" class="primary" id="done-next">${lastPending ? (state.settings.returnHome ? "Soin fait, retour au départ" : "Soin fait, terminer") : "Soin fait, GPS suivant"}</button>`
             : `<button type="button" class="primary" id="go-next">Y aller</button>`}
+          <button type="button" class="ghost" data-when="${esc(next.patient.id)}">Modifier l'horaire</button>
           <button type="button" class="ghost" id="absent-next">Absent, passer au suivant</button>
         </div>
       </article>`;
@@ -639,7 +640,7 @@ function renderTour() {
       <li class="stop ${cls}">
         <div class="thread"><span class="num">${index + 1}</span></div>
         <div class="stop-body">
-          <h3>${esc(rowName(row))}</h3>
+          <h3><button type="button" class="when-link" data-when="${esc(row.patient.id)}">${esc(rowName(row))}</button></h3>
           <p class="meta">${esc(row.patient.care || "Soin")} · ${row.stop.minutes} min · ${esc(whenLabel(row.stop))}${eta ? ` · arrivée ${formatHM(eta.arrive)}` : ""}</p>
           <p class="meta">${esc(row.patient.address)}</p>
           ${status ? `<div class="badges"><span class="badge done">${status === "done" ? "Fait" : "Absent"}</span></div>` : etaBadges(eta, row.stop)}
@@ -648,6 +649,7 @@ function renderTour() {
           <div class="row-actions">
             <button type="button" data-move="-1" data-id="${esc(row.stop.id)}">Monter</button>
             <button type="button" data-move="1" data-id="${esc(row.stop.id)}">Descendre</button>
+            <button type="button" data-when="${esc(row.patient.id)}">Horaire</button>
             <button type="button" data-gps="${esc(row.patient.id)}">GPS</button>
             ${status ? `<button type="button" data-clear="${esc(row.stop.id)}">Remettre</button>` : `<button type="button" data-done="${esc(row.stop.id)}">Fait</button>`}
           </div>
@@ -671,7 +673,7 @@ function renderTour() {
       ${list.length ? `<button type="button" class="ghost" id="print-tour">Imprimer la tournée</button>` : ""}
       ${state.tours[dateKey(new Date())]?.stops?.length ? `<button type="button" class="ghost" id="copy-tomorrow">Même tournée pour demain</button>` : ""}
     </div>
-    ${list.length ? `<p class="hint">L'heure de départ suit le premier patient. Optimiser classe les autres après, selon les adresses. « À la main », déjà fait ou absent, ne bouge pas.</p><ol class="stops">${stops}</ol>` : `<div class="empty"><strong>La journée n'est pas encore composée.</strong>Coche les patients dans ta base. Les horaires habituels reviennent tout seuls.</div>`}
+    ${list.length ? `<p class="hint">L'heure de départ suit le premier patient. Appuie sur un nom pour changer son horaire. Optimiser classe les autres après, selon les adresses. « À la main », déjà fait ou absent, ne bouge pas.</p><ol class="stops">${stops}</ol>` : `<div class="empty"><strong>La journée n'est pas encore composée.</strong>Coche les patients dans ta base. Les horaires habituels reviennent tout seuls.</div>`}
     ${returnEta ? `<p class="return-line">Retour au départ : ${returnEta.travel} min, arrivée ${formatHM(returnEta.arrive)}.</p>` : ""}
     ${backupBlock()}
     <details class="depart-fold" ${missingStart ? "open" : ""}>
@@ -827,13 +829,14 @@ function renderPass() {
   const sheet = draft.sheets[id];
   const last = draft.index === draft.ids.length - 1;
   const known = patient.habits?.some((item) => item.mode);
+  const nextLabel = draft.single ? "Enregistrer l'horaire" : last ? "C'est bon, le départ" : known ? "C'est bon, suivant" : "Patient suivant";
   els.app.innerHTML = `
-    <p class="progress">${draft.index + 1} sur ${draft.ids.length}</p>
+    ${draft.single ? "" : `<p class="progress">${draft.index + 1} sur ${draft.ids.length}</p>`}
     <article class="stop-card pass-card">
       <h2 class="name">${esc(patient.name)}</h2>
       <p>${esc(patient.geoLabel || patient.address)}</p>
       <p class="meta">${esc(patient.care || "Soin")}</p>
-      ${known ? `<p class="hint">Habitude enregistrée. Laisse comme ça si c'est bon, ou change pour cette tournée.</p>` : ""}
+      ${draft.single ? `<p class="hint">Tu changes l'horaire de ce patient. Les autres restent dans la tournée.</p>` : known ? `<p class="hint">Habitude enregistrée. Laisse comme ça si c'est bon, ou change pour cette tournée.</p>` : ""}
       <p class="label">Nombre de passages</p>
       <div class="stepper">
         <button type="button" id="count-minus" aria-label="Un passage de moins">−</button>
@@ -842,8 +845,8 @@ function renderPass() {
       </div>
       ${sheet.passes.slice(0, sheet.count).map((pass, index) => passBlock(pass, index, sheet.count)).join("")}
       <div class="stack">
-        ${draft.index > 0 ? `<button type="button" class="ghost" id="pass-back">Patient précédent</button>` : ""}
-        <button type="button" class="primary" id="pass-next">${last ? "C'est bon, le départ" : known ? "C'est bon, suivant" : "Patient suivant"}</button>
+        ${draft.single ? `<button type="button" class="ghost" id="pass-cancel">Retour</button>` : draft.index > 0 ? `<button type="button" class="ghost" id="pass-back">Patient précédent</button>` : ""}
+        <button type="button" class="primary" id="pass-next">${nextLabel}</button>
       </div>
     </article>`;
 }
@@ -1080,10 +1083,20 @@ function bindView() {
     } else if (draft.index > 0) draft.index -= 1;
     render();
   });
+  document.querySelector("#pass-cancel")?.addEventListener("click", () => {
+    draft = null;
+    view = "tour";
+    render();
+  });
+  document.querySelectorAll("[data-when]").forEach((button) => button.addEventListener("click", () => editSchedule(button.dataset.when)));
   document.querySelector("#pass-next")?.addEventListener("click", () => {
     const error = sheetError(draft.sheets[draft.ids[draft.index]]);
     if (error) {
       flash(error);
+      return;
+    }
+    if (draft.single) {
+      saveOneSchedule();
       return;
     }
     if (draft.index < draft.ids.length - 1) {
@@ -1182,6 +1195,85 @@ function changePickMinutes(id, delta) {
   save();
   const label = document.querySelector(`[data-pick="${CSS.escape(id)}"]`)?.closest(".pick")?.querySelector(".pick-time strong");
   if (label) label.textContent = `${minutes} min`;
+}
+
+function editSchedule(patientId) {
+  const patient = patientById(patientId);
+  if (!patient) return;
+  draft = {
+    phase: "patient",
+    single: true,
+    ids: [patientId],
+    index: 0,
+    from: state.settings.startAddress,
+    geoLabel: state.settings.startLabel || "",
+    sheets: { [patientId]: sheetFrom(patient) },
+  };
+  view = "pass";
+  render();
+}
+
+function applySheetToTour(patientId, used) {
+  const patient = patientById(patientId);
+  const passes = used.map((item) => cleanPass(item));
+  patient.habits = passes;
+  patient.minutes = passes[0].minutes;
+  const tour = currentTour();
+  if (!tour) return;
+  const old = (tour.stops || []).filter((stop) => stop.patientId === patientId).sort((a, b) => a.pass - b.pass);
+  const kept = passes.map((pass, index) => ({
+    id: old[index]?.id || uid(),
+    patientId,
+    pass: index + 1,
+    ...pass,
+    hold: Boolean(old[index]?.hold),
+    hand: old[index]?.hand,
+  }));
+  const removed = old.slice(passes.length).map((stop) => stop.id);
+  const day = todayKey();
+  if (state.done[day]) {
+    for (const id of removed) delete state.done[day][id];
+  }
+  if (removed.includes(tour.goingTo)) tour.goingTo = kept[0]?.id || "";
+  const oldIds = new Set(old.map((stop) => stop.id));
+  const order = [];
+  let inserted = false;
+  for (const id of tour.order || []) {
+    if (!oldIds.has(id)) {
+      order.push(id);
+      continue;
+    }
+    if (!inserted) {
+      order.push(...kept.map((stop) => stop.id));
+      inserted = true;
+    }
+  }
+  if (!inserted) order.push(...kept.map((stop) => stop.id));
+  tour.stops = [...(tour.stops || []).filter((stop) => stop.patientId !== patientId), ...kept];
+  tour.order = order;
+  const sameStops = old.length === kept.length && old.every((stop, index) => stop.id === kept[index].id);
+  if (!sameStops) {
+    tour.matrix = null;
+    tour.ids = [];
+  }
+}
+
+async function saveOneSchedule() {
+  const id = draft.ids[0];
+  const error = sheetError(draft.sheets[id]);
+  if (error) {
+    flash(error);
+    return;
+  }
+  applySheetToTour(id, draft.sheets[id].passes.slice(0, draft.sheets[id].count));
+  draft = null;
+  view = "tour";
+  save();
+  if (state.settings.startAddress.trim() && tourStops().length) await organize();
+  else {
+    render();
+    flash("Horaire enregistré");
+  }
 }
 
 function startPass() {
