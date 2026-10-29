@@ -21,6 +21,8 @@ const els = {
 const state = load();
 let view = "tour";
 let dayOffset = 0;
+let pickIds = new Set();
+let pickCabinet = "all";
 let editingId = null;
 let draftGeo = null;
 let suggestSeq = 0;
@@ -43,7 +45,9 @@ function blank() {
       depart: "07:00",
       gps: "google",
       returnHome: false,
+      cabinetId: "",
     },
+    cabinets: [],
     patients: [],
     tours: {},
     done: {},
@@ -64,6 +68,7 @@ function patientRecord(raw) {
     phone: raw.phone || "",
     note: raw.note || "",
     paused: Boolean(raw.paused),
+    cabinetId: raw.cabinetId || "",
     habits: Array.isArray(raw.habits) ? raw.habits.map((item) => cleanPass(item)) : [],
   };
 }
@@ -93,8 +98,20 @@ function load() {
     const oldDepart = old.settings.depart;
     if (!saved?.settings?.depart) next.settings.depart = typeof oldDepart === "string" ? oldDepart : oldDepart?.matin || "07:00";
   }
-  next.recovered = recovered > 0;
+  ensureCabinets(next);
+  next.recovered = recovered > 0 || !Array.isArray(saved?.cabinets) || !saved.cabinets.length;
   return next;
+}
+
+function ensureCabinets(next) {
+  if (!Array.isArray(next.cabinets) || !next.cabinets.length) {
+    next.cabinets = [{ id: uid(), name: "Cabinet" }];
+  }
+  const ids = new Set(next.cabinets.map((cabinet) => cabinet.id));
+  if (!ids.has(next.settings.cabinetId)) next.settings.cabinetId = next.cabinets[0].id;
+  for (const patient of next.patients) {
+    if (!ids.has(patient.cabinetId)) patient.cabinetId = next.cabinets[0].id;
+  }
 }
 
 function normalize(saved) {
@@ -104,7 +121,9 @@ function normalize(saved) {
   next.patients = (saved.patients || []).map(patientRecord);
   next.tours = Object.fromEntries(Object.entries(saved.tours || {}).map(([key, tour]) => [key, migrateTour(tour)]));
   next.done = saved.done || {};
+  next.cabinets = Array.isArray(saved.cabinets) ? saved.cabinets.filter((cabinet) => cabinet?.id && cabinet?.name) : [];
   next.updatedAt = Number(saved.updatedAt) || 0;
+  ensureCabinets(next);
   return next;
 }
 
@@ -167,6 +186,7 @@ function receiveSync(remote) {
   state.patients = next.patients;
   state.tours = next.tours;
   state.done = next.done;
+  state.cabinets = next.cabinets;
   state.updatedAt = next.updatedAt;
   save({ remote: true });
   render();
@@ -660,23 +680,61 @@ function renderTour() {
     </details>`;
 }
 
+function cabinetName(id) {
+  return state.cabinets.find((cabinet) => cabinet.id === id)?.name || "Cabinet";
+}
+
+function careMinutes(patient) {
+  return Number(patient.habits?.[0]?.minutes) || Number(patient.minutes) || 20;
+}
+
+function cabinetBar(filter) {
+  const chips = state.cabinets.map((cabinet) => {
+    const on = filter ? (filter === "all" ? false : cabinet.id === filter) : cabinet.id === state.settings.cabinetId;
+    return `<button type="button" data-cabinet="${esc(cabinet.id)}" class="${on ? "on" : ""}">${esc(cabinet.name)}</button>`;
+  }).join("");
+  const all = filter ? `<button type="button" data-cabinet="all" class="${filter === "all" ? "on" : ""}">Tous</button>` : "";
+  return `
+    <div class="cabinet-switch">${all}${chips}<button type="button" id="show-cabinet">Autre cabinet</button></div>
+    <form id="cabinet-form" class="cabinet-form" hidden>
+      <label>Nom du cabinet<input id="cabinet-name" placeholder="Remplacement, autre ville…" required></label>
+      <button type="submit" class="primary">Ajouter ce cabinet</button>
+    </form>`;
+}
+
 function renderPick() {
   const query = (renderPick.query || "").trim().toLowerCase();
-  const selected = new Set(tourStops().map((stop) => stop.patientId));
-  const list = activePatients().filter((patient) => !query || `${patient.name} ${patient.address}`.toLowerCase().includes(query));
+  const list = activePatients().filter((patient) => {
+    if (pickCabinet !== "all" && patient.cabinetId !== pickCabinet) return false;
+    return !query || `${patient.name} ${patient.address} ${cabinetName(patient.cabinetId)}`.toLowerCase().includes(query);
+  });
+  const count = pickIds.size;
+  const countText = count ? `<strong>${count}</strong> patient${count > 1 ? "s" : ""} sélectionné${count > 1 ? "s" : ""}` : "<strong>Aucun</strong> patient sélectionné";
   els.app.innerHTML = `
-    <p class="hint" style="margin-bottom:12px">Coche ceux de cette journée. Les fiches restent dans la base : décocher les retire seulement d'aujourd'hui.</p>
+    <p class="hint" style="margin-bottom:12px">Coche ceux de cette journée. Le temps à côté du nom est le temps de soin : tu peux le changer ici. Décocher retire le patient seulement d'aujourd'hui.</p>
+    ${cabinetBar(pickCabinet)}
     <div class="tools">
       <label class="search">Rechercher<input id="pick-search" value="${esc(renderPick.query || "")}" placeholder="Nom ou rue"></label>
     </div>
     ${list.length ? list.map((patient) => `
-      <label class="pick">
-        <input type="checkbox" data-pick="${esc(patient.id)}" ${selected.has(patient.id) ? "checked" : ""}>
-        <span><strong>${esc(patient.name)}</strong><small>${esc(patient.address)}</small></span>
-      </label>`).join("") : `<div class="empty"><strong>Aucun patient dans la base.</strong>Enregistre d'abord les fiches, puis reviens les cocher.</div>`}
-    <div class="stack">
-      <button type="button" class="primary" id="to-pass">Passer les horaires</button>
-      <button type="button" class="ghost" id="back-tour">Retour</button>
+      <article class="pick">
+        <label>
+          <input type="checkbox" data-pick="${esc(patient.id)}" ${pickIds.has(patient.id) ? "checked" : ""}>
+          <span><strong>${esc(patient.name)}</strong><small>${esc(patient.address)}${state.cabinets.length > 1 ? ` · ${esc(cabinetName(patient.cabinetId))}` : ""}</small></span>
+        </label>
+        <div class="pick-time">
+          <button type="button" data-pick-min="-5" data-id="${esc(patient.id)}" aria-label="Retirer 5 minutes">−</button>
+          <strong>${careMinutes(patient)} min</strong>
+          <button type="button" data-pick-min="5" data-id="${esc(patient.id)}" aria-label="Ajouter 5 minutes">+</button>
+        </div>
+      </article>`).join("") : `<div class="empty"><strong>Aucun patient dans ce cabinet.</strong>Ajoute un cabinet, ou enregistre d'abord les fiches.</div>`}
+    <div class="pick-bar">
+      <p id="pick-count">${countText}</p>
+      <div class="stack">
+        <button type="button" class="primary" id="to-pass">Passer les horaires</button>
+        <button type="button" class="ghost" id="add-from-pick">Ajouter un patient</button>
+        <button type="button" class="ghost" id="back-tour">Retour</button>
+      </div>
     </div>`;
 }
 
@@ -793,9 +851,11 @@ function renderPass() {
 function renderPatients() {
   const query = (renderPatients.query || "").trim().toLowerCase();
   const list = state.patients
+    .filter((patient) => patient.cabinetId === state.settings.cabinetId)
     .filter((patient) => !query || `${patient.name} ${patient.address} ${patient.care}`.toLowerCase().includes(query))
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
   els.app.innerHTML = `
+    ${cabinetBar("")}
     <div class="tools">
       <label class="search">Rechercher<input id="patient-search" value="${esc(renderPatients.query || "")}" placeholder="Nom ou rue"></label>
       <button type="button" class="add" id="add-patient">Ajouter</button>
@@ -913,6 +973,8 @@ function bindView() {
     render();
   });
   document.querySelector("#choose")?.addEventListener("click", () => {
+    pickIds = new Set(tourStops().map((stop) => stop.patientId));
+    pickCabinet = "all";
     view = "pick";
     render();
   });
@@ -957,6 +1019,19 @@ function bindView() {
   document.querySelector("#import-data")?.addEventListener("change", importData);
   bindSearch("#patient-search", renderPatients);
   bindSearch("#pick-search", renderPick);
+  bindCabinets();
+  document.querySelector("#add-from-pick")?.addEventListener("click", () => {
+    if (pickCabinet !== "all") state.settings.cabinetId = pickCabinet;
+    openEditor(null);
+  });
+  els.app.querySelectorAll("[data-pick]").forEach((input) => input.addEventListener("change", () => {
+    if (input.checked) pickIds.add(input.dataset.pick);
+    else pickIds.delete(input.dataset.pick);
+    const count = pickIds.size;
+    const line = document.querySelector("#pick-count");
+    if (line) line.innerHTML = count ? `<strong>${count}</strong> patient${count > 1 ? "s" : ""} sélectionné${count > 1 ? "s" : ""}` : "<strong>Aucun</strong> patient sélectionné";
+  }));
+  els.app.querySelectorAll("[data-pick-min]").forEach((button) => button.addEventListener("click", () => changePickMinutes(button.dataset.id, Number(button.dataset.pickMin))));
   els.app.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openEditor(button.dataset.edit)));
   els.app.querySelectorAll("[data-step]").forEach((button) => button.addEventListener("click", () => changeMinutes(button.dataset.id, Number(button.dataset.step))));
   els.app.querySelectorAll("[data-hold]").forEach((input) => input.addEventListener("change", () => {
@@ -1068,8 +1143,49 @@ function sheetFrom(patient) {
   return { count: Math.min(3, passes.length), passes };
 }
 
+function bindCabinets() {
+  document.querySelector("#show-cabinet")?.addEventListener("click", () => {
+    const form = document.querySelector("#cabinet-form");
+    form.hidden = false;
+    document.querySelector("#cabinet-name").focus();
+  });
+  document.querySelector("#cabinet-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = document.querySelector("#cabinet-name").value.trim();
+    if (!name) return;
+    const cabinet = { id: uid(), name };
+    state.cabinets.push(cabinet);
+    state.settings.cabinetId = cabinet.id;
+    if (view === "pick") pickCabinet = cabinet.id;
+    save();
+    render();
+    flash(`${name} est prêt. Ajoute ses patients.`);
+  });
+  document.querySelectorAll("[data-cabinet]").forEach((button) => button.addEventListener("click", () => {
+    if (view === "pick") pickCabinet = button.dataset.cabinet;
+    else {
+      state.settings.cabinetId = button.dataset.cabinet;
+      save();
+    }
+    render();
+  }));
+}
+
+function changePickMinutes(id, delta) {
+  const patient = patientById(id);
+  if (!patient) return;
+  const minutes = Math.min(180, Math.max(5, careMinutes(patient) + delta));
+  patient.minutes = minutes;
+  if (patient.habits?.[0]) patient.habits[0].minutes = minutes;
+  const first = currentTour()?.stops?.find((stop) => stop.patientId === id);
+  if (first) first.minutes = minutes;
+  save();
+  const label = document.querySelector(`[data-pick="${CSS.escape(id)}"]`)?.closest(".pick")?.querySelector(".pick-time strong");
+  if (label) label.textContent = `${minutes} min`;
+}
+
 function startPass() {
-  const ids = [...document.querySelectorAll("[data-pick]:checked")].map((input) => input.dataset.pick);
+  const ids = [...pickIds];
   if (!ids.length) {
     flash("Coche au moins un patient");
     return;
@@ -1407,6 +1523,9 @@ function openEditor(id) {
   document.querySelector("#f-phone").value = patient?.phone || "";
   document.querySelector("#f-note").value = patient?.note || "";
   document.querySelector("#f-paused").checked = Boolean(patient?.paused);
+  const cabinetField = document.querySelector("#f-cabinet");
+  cabinetField.innerHTML = state.cabinets.map((cabinet) => `<option value="${esc(cabinet.id)}">${esc(cabinet.name)}</option>`).join("");
+  cabinetField.value = patient?.cabinetId || state.settings.cabinetId;
   document.querySelectorAll("#care-chips button").forEach((button) => button.classList.toggle("on", button.dataset.care === patient?.care));
   els.suggest.hidden = true;
   els.geoOk.hidden = !draftGeo?.label;
@@ -1437,6 +1556,7 @@ function readPatient() {
       phone: document.querySelector("#f-phone").value.trim(),
       note: document.querySelector("#f-note").value.trim(),
       paused: document.querySelector("#f-paused").checked,
+      cabinetId: document.querySelector("#f-cabinet").value || state.settings.cabinetId,
     },
   };
 }
@@ -1505,6 +1625,8 @@ async function importData(event) {
     state.patients = next.patients;
     state.tours = next.tours;
     state.done = next.done;
+    state.cabinets = next.cabinets;
+    state.settings.cabinetId = next.settings.cabinetId;
     save();
     render();
     flash("Sauvegarde restaurée");
@@ -1576,7 +1698,10 @@ els.form.addEventListener("submit", (event) => {
   if (editingId) {
     const index = state.patients.findIndex((patient) => patient.id === editingId);
     state.patients[index] = result.patient;
-  } else state.patients.push(result.patient);
+  } else {
+    state.patients.push(result.patient);
+    if (view === "pick") pickIds.add(result.patient.id);
+  }
   save();
   els.editor.close();
   render();
