@@ -589,8 +589,7 @@ function renderTour() {
   const beforeDepart = state.settings.depart;
   refreshLeave();
   if (beforeDepart !== state.settings.depart) save();
-  const route = rows();
-  const list = [...route].sort((a, b) => compareNames(a.patient.name, b.patient.name) || a.stop.pass - b.stop.pass);
+  const list = rows();
   const etas = computeEtas();
   const next = pending()[0];
   const doneCount = list.filter((row) => statusOf(row.stop.id) === "done").length;
@@ -641,13 +640,12 @@ function renderTour() {
     const status = statusOf(row.stop.id);
     const eta = etas.get(row.stop.id);
     const cls = [status, eta?.late > 0 && !status ? "late" : ""].filter(Boolean).join(" ");
-    const rank = route.findIndex((item) => item.stop.id === row.stop.id) + 1;
     return `
       <li class="stop ${cls}">
         <div class="thread"><span class="num">${index + 1}</span></div>
         <div class="stop-body">
           <h3><button type="button" class="when-link" data-when="${esc(row.patient.id)}">${esc(rowName(row))}</button></h3>
-          <p class="meta">${esc(row.patient.care || "Soin")} · ${row.stop.minutes} min · ${esc(whenLabel(row.stop))}${eta ? ` · arrivée ${formatHM(eta.arrive)}` : ""} · ${rank === 1 ? "1er sur la route" : `${rank}e sur la route`}</p>
+          <p class="meta">${esc(row.patient.care || "Soin")} · ${row.stop.minutes} min · ${esc(whenLabel(row.stop))}${eta ? ` · arrivée ${formatHM(eta.arrive)}` : ""}</p>
           <p class="meta">${esc(row.patient.address)}</p>
           ${status ? `<div class="badges"><span class="badge done">${status === "done" ? "Fait" : "Absent"}</span></div>` : etaBadges(eta, row.stop)}
           ${row.patient.note ? `<p class="note">${esc(row.patient.note)}</p>` : ""}
@@ -664,7 +662,7 @@ function renderTour() {
   }).join("");
 
   const returnEta = etas.get("__return__");
-  const first = route[0];
+  const first = list[0];
   const firstEta = first ? etas.get(first.stop.id) : null;
   const leave = tour?.matrix && first && firstEta ? `<p class="banner leave"><strong>Pars à ${formatClock(state.settings.depart)}</strong>. ${firstEta.travel} min de route, tu es chez ${esc(rowName(first))} à ${formatHM(firstEta.arrive)}.${tour.leaveProposed ? " Aucune heure n'est imposée, l'arrivée chez le premier est calée à 8h00." : ""}</p>` : "";
   els.app.innerHTML = `
@@ -679,7 +677,7 @@ function renderTour() {
       ${list.length ? `<button type="button" class="ghost" id="print-tour">Imprimer la tournée</button>` : ""}
       ${state.tours[dateKey(new Date())]?.stops?.length ? `<button type="button" class="ghost" id="copy-tomorrow">Même tournée pour demain</button>` : ""}
     </div>
-    ${list.length ? `<p class="hint">Les noms sont dans l'ordre alphabétique. Appuie sur un nom pour changer son horaire. Le prochain patient et les arrivées suivent la route. « À la main », déjà fait ou absent, ne bouge pas.</p><ol class="stops">${stops}</ol>` : `<div class="empty"><strong>La journée n'est pas encore composée.</strong>Coche les patients dans ta base. Les horaires habituels reviennent tout seuls.</div>`}
+    ${list.length ? `<p class="hint">L'heure de départ suit le premier patient. Appuie sur un nom pour changer son horaire. Optimiser classe les autres après, selon les adresses. « À la main », déjà fait ou absent, ne bouge pas.</p><ol class="stops">${stops}</ol>` : `<div class="empty"><strong>La journée n'est pas encore composée.</strong>Coche les patients dans ta base. Les horaires habituels reviennent tout seuls.</div>`}
     ${returnEta ? `<p class="return-line">Retour au départ : ${returnEta.travel} min, arrivée ${formatHM(returnEta.arrive)}.</p>` : ""}
     ${backupBlock()}
     <details class="depart-fold" ${missingStart ? "open" : ""}>
@@ -790,19 +788,18 @@ function firstPatientControl(tour) {
     const passage = tourStops().filter((stop) => stop.patientId === row.patient.id).sort((a, b) => a.pass - b.pass)[0];
     const when = passage ? whenLabel(passage) : "";
     const label = when && when !== "N'importe quand" ? `${row.patient.name} · ${when}` : row.patient.name;
-    options.push({ name: row.patient.name, html: `<option value="${esc(row.patient.id)}" ${tour?.firstPatientId === row.patient.id ? "selected" : ""}>${esc(label)}</option>` });
+    options.push(`<option value="${esc(row.patient.id)}" ${tour?.firstPatientId === row.patient.id ? "selected" : ""}>${esc(label)}</option>`);
   }
-  options.sort((a, b) => compareNames(a.name, b.name));
   return `<label class="first-patient">C'est qui, le premier ?
     <select id="first-patient">
       <option value="" ${tour?.firstPatientId ? "" : "selected"}>—</option>
-      ${options.map((option) => option.html).join("")}
+      ${options.join("")}
     </select>
   </label>`;
 }
 
 function renderStart() {
-  const picks = [...draft.ids].sort((a, b) => compareNames(patientById(a)?.name, patientById(b)?.name)).map((id) => {
+  const picks = draft.ids.map((id) => {
     const patient = patientById(id);
     if (!patient) return "";
     return `<button type="button" data-first="${esc(id)}" class="${draft.firstId === id ? "on" : ""}">${esc(patient.name)}</button>`;
@@ -1284,7 +1281,7 @@ async function saveOneSchedule() {
 }
 
 function startPass() {
-  const ids = [...pickIds].sort((a, b) => compareNames(patientById(a)?.name, patientById(b)?.name));
+  const ids = [...pickIds];
   if (!ids.length) {
     flash("Coche au moins un patient");
     return;
